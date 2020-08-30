@@ -58,5 +58,14 @@ namespace BBAlarmsService.Properties {
                 return ((string)(this["AlarmsDBName"]));
             }
         }
+        
+        [global::System.Configuration.ApplicationScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string AllowedPorts {
+            get {
+                return ((string)(this["AllowedPorts"]));
+            }
+        }
     }
 }

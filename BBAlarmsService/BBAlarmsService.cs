@@ -22,6 +22,7 @@ namespace BBAlarmsService
         public BBAlarmsService() : base("BBALARMS", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog")
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
+            AllowedPorts = Properties.Settings.Default.AllowedPorts;
             try
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connecting to Alarms database...");
