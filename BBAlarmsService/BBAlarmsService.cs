@@ -135,8 +135,7 @@ namespace BBAlarmsService
         {
             base.OnClientConnect(cnn);
 
-            //TODO: uncomment monitor start
-            //_monitorRemoteAlarmsTimer.Start();
+            _monitorRemoteAlarmsTimer.Start();
         }
 
         public override void AddCommandHelp(List<string> commandHelp)
@@ -146,6 +145,7 @@ namespace BBAlarmsService
             commandHelp.Add("list-alarms:  Lists active alarms in the alarms database");
             commandHelp.Add("alarm-status:  Lists alarms currently on and currently off");
             commandHelp.Add("silence: Turn buzzer off for <seconds>");
+            commandHelp.Add("unsilence: Unsilence the buzzer");
         }
 
         private bool IsAlarmOn
@@ -309,6 +309,12 @@ namespace BBAlarmsService
                         //don't send a messages
                         return false;
                     }
+
+                case "unsilence":
+                    if (ADMS.Count == 0) throw new Exception("No boards connected");
+                    _buzzer.Unsilence();
+                    message.Value = "Buzzer unsilenced";
+                    return true;
 
                 case "disable-alarm":
                     if (args.Count == 0) throw new Exception("No alarm specified to disable");
