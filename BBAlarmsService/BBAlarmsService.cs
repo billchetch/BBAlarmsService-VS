@@ -9,10 +9,19 @@ using Chetch.Arduino.Devices.Buzzers;
 
 namespace BBAlarmsService
 {
-    class BBAlarmsService : ADMService
+    public class BBAlarmsService : ADMService
     {
         public class MessageSchema : Chetch.Messaging.MessageSchema
         {
+            static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, bool testing = false)
+            {
+                Message msg = new Message(MessageType.ALERT);
+                msg.AddValue("DeviceID", deviceID);
+                msg.AddValue("AlarmState", alarmState);
+                msg.AddValue("Testing", testing);
+                return msg;
+            }
+
             public MessageSchema() { }
 
             public MessageSchema(Message message) : base(message) { }
@@ -52,15 +61,6 @@ namespace BBAlarmsService
                 Message.AddValue("Silenced", buzzer.IsSilenced);
             }
 
-            public Message AlertAlarmsService(String deviceID, AlarmState alarmState, bool testing = false)
-            {
-                Message msg = new Message(MessageType.ALERT);
-                msg.AddValue("DeviceID", deviceID);
-                msg.AddValue("AlarmState", alarmState);
-                msg.AddValue("Testing", testing);
-                return msg;
-            }
-
             public bool IsAlert()
             {
                 return Message.HasValue("AlarmState");
@@ -84,8 +84,8 @@ namespace BBAlarmsService
 
         public enum AlarmState
         {
-            ON,
             OFF,
+            ON,
             DISABLED,
             ENABLED
         }
@@ -123,7 +123,6 @@ namespace BBAlarmsService
                 base.OnMatched(message);
             }
         }
-
 
         public const int PILOT_LIGHT_PIN = 3;
         public const int BUZZER_PIN = 4;
@@ -214,7 +213,8 @@ namespace BBAlarmsService
         protected override void OnClientConnect(ClientConnection cnn)
         {
             base.OnClientConnect(cnn);
-            //Start timer to monitor remote alarms to ensure synchronised
+
+            //TODO: uncomment monitor start
             _monitorRemoteAlarmsTimer.Start();
         }
 
@@ -253,10 +253,11 @@ namespace BBAlarmsService
             {
                 case MessageType.DATA:
                     var dev = adm.GetDevice(message.Sender);
-                    if (dev != null && message.HasValue("State"))
+                    if (dev != null && _alarmStates.ContainsKey(dev.ID) && message.HasValue("State"))
                     {
                         bool newState = message.GetBool("State");
                         OnAlarmStateChanged(dev.ID, newState ? AlarmState.ON : AlarmState.OFF);
+                        if (message.Tag == 0) return; //i.e. hasn't been specifically requested so do not call base method as this will broadcast but the event is already broadcast
                     }
                     break;
             }
@@ -303,6 +304,10 @@ namespace BBAlarmsService
                 _pilot.Off();
                 _buzzer.Off();
             }
+
+            //finally we broadcast to any listeners
+            var alert = MessageSchema.AlertAlarmStateChange(deviceID, newState);
+            Broadcast(alert);
         }
 
         private void EnableAlarm(String id, bool enable)
