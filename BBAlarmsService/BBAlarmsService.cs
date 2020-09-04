@@ -11,6 +11,77 @@ namespace BBAlarmsService
 {
     class BBAlarmsService : ADMService
     {
+        public class MessageSchema : Chetch.Messaging.MessageSchema
+        {
+            public MessageSchema() { }
+
+            public MessageSchema(Message message) : base(message) { }
+
+            public void AddAlarms(List<Chetch.Database.DBRow> rows)
+            {
+                Message.AddValue("Alarms", rows.Select(i => i.GenerateParamString()).ToList());
+            }
+
+            public List<String> GetAlarms()
+            {
+                return Message.GetList<String>("Alarms");
+            }
+
+            public void AddAlarmStates(Dictionary<String, AlarmState> states)
+            {
+                Message.AddValue("AlarmStates", states);
+                bool on = false;
+                foreach (var astate in states.Values)
+                {
+                    if (astate == AlarmState.ON)
+                    {
+                        on = true;
+                        break;
+                    }
+                }
+            }
+
+            public Dictionary<String, AlarmState> GetAlarmStates()
+            {
+                return Message.HasValue("AlarmStates") ? Message.GetDictionary<AlarmState>("AlarmStates") : null;
+            }
+
+            public void AddBuzzer(Buzzer buzzer)
+            {
+                Message.AddValue("Buzzer", buzzer.ToString());
+                Message.AddValue("Silenced", buzzer.IsSilenced);
+            }
+
+            public Message AlertAlarmsService(String deviceID, AlarmState alarmState, bool testing = false)
+            {
+                Message msg = new Message(MessageType.ALERT);
+                msg.AddValue("DeviceID", deviceID);
+                msg.AddValue("AlarmState", alarmState);
+                msg.AddValue("Testing", testing);
+                return msg;
+            }
+
+            public bool IsAlert()
+            {
+                return Message.HasValue("AlarmState");
+            }
+
+            public AlarmState GetAlarmState()
+            {
+                return Message.GetEnum<AlarmState>("AlarmState");
+            }
+
+            public void AddTesting(bool testing)
+            {
+                Message.AddValue("Testing", testing);
+            }
+
+            public bool IsTesting()
+            {
+                return Message.GetBool("Testing");
+            }
+        }
+
         public enum AlarmState
         {
             ON,
@@ -23,11 +94,12 @@ namespace BBAlarmsService
         {
             public String AlarmName { get; internal set; }
 
-            public bool State { get; internal set; } = false;
-            public bool IsOn { get { return State; } }
-            public bool IsOff { get { return !State; } }
+            public AlarmState AlarmState { get; internal set; } = AlarmState.OFF;
+            public bool IsOn { get { return AlarmState == AlarmState.ON; } }
+            public bool IsOff { get { return !IsOn; } }
             public bool Enabled { get; internal set; } = true;
 
+            private MessageSchema _schema = new MessageSchema();
 
             public RemoteAlarm(String deviceID, String alarmName, String clientName, Action<MessageFilter, Message> onMatched) : base(deviceID, clientName, Chetch.Messaging.MessageType.ALERT, onMatched)
             {
@@ -42,10 +114,10 @@ namespace BBAlarmsService
             protected override void OnMatched(Message message)
             {
                 if (!Enabled) return;
-
-                if (message.HasValue("State"))
+                _schema.Message = message;
+                if (_schema.IsAlert())
                 {
-                    State = message.GetBool("State");
+                    AlarmState = _schema.GetAlarmState();
                 }
 
                 base.OnMatched(message);
@@ -67,7 +139,12 @@ namespace BBAlarmsService
         private System.Timers.Timer _monitorRemoteAlarmsTimer = null;
         private List<String> _remoteClients = new List<String>();
 
-        public BBAlarmsService() : base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog")
+        private String _testingAlarmID = null;
+        private System.Timers.Timer _testAlarmTimer = null;
+
+        public bool IsTesting { get { return _testingAlarmID != null; } }
+
+        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog")
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             AllowedPorts = Properties.Settings.Default.AllowedPorts;
@@ -105,9 +182,12 @@ namespace BBAlarmsService
                 }
 
                 _monitorRemoteAlarmsTimer = new System.Timers.Timer();
-                _monitorRemoteAlarmsTimer.Stop();
                 _monitorRemoteAlarmsTimer.Interval = 30 * 1000;
                 _monitorRemoteAlarmsTimer.Elapsed += new System.Timers.ElapsedEventHandler(MonitorRemoteAlarms);
+
+                _testAlarmTimer = new System.Timers.Timer();
+                _testAlarmTimer.Interval = 5 * 1000;
+                _testAlarmTimer.Elapsed += new System.Timers.ElapsedEventHandler(EndAlarmTest);
             }
             catch (Exception e)
             {
@@ -134,7 +214,7 @@ namespace BBAlarmsService
         protected override void OnClientConnect(ClientConnection cnn)
         {
             base.OnClientConnect(cnn);
-
+            //Start timer to monitor remote alarms to ensure synchronised
             _monitorRemoteAlarmsTimer.Start();
         }
 
@@ -145,42 +225,26 @@ namespace BBAlarmsService
             commandHelp.Add("list-alarms:  Lists active alarms in the alarms database");
             commandHelp.Add("alarm-status:  Lists alarms currently on and currently off");
             commandHelp.Add("silence: Turn buzzer off for <seconds>");
-            commandHelp.Add("unsilence: Unsilence the buzzer");
+            commandHelp.Add("unsilence: Unsilence buzzer");
+            commandHelp.Add("disable-alarm: Set <alarm> to State DISABLED");
+            commandHelp.Add("enable-alarm: Set <alarm> to state ENABLED");
+            commandHelp.Add("test-alarm: Set <alarm> to ON for a short period of time");
         }
 
-        private bool IsAlarmOn
+        private bool HasAlarmWithState(AlarmState alarmState, Dictionary<String, AlarmState> states = null)
         {
-            get
+            if (states == null) states = _alarmStates;
+
+            foreach (var state in states.Values)
             {
-                bool localAlarmOn = false;
-                if (ADMS.Count > 0)
-                {
-                    var adm = GetADM(null);
-                    if (adm != null && adm.IsConnected)
-                    {
-                        foreach (var a in _localAlarms)
-                        {
-                            if (a.IsConnected && a.IsOn)
-                            {
-                                localAlarmOn = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                bool remoteAlarmOn = false;
-                foreach (var ra in _remoteAlarms)
-                {
-                    if (ra.IsOn)
-                    {
-                        remoteAlarmOn = true;
-                        break;
-                    }
-                }
-
-                return localAlarmOn || remoteAlarmOn;
+                if (state == alarmState) return true;
             }
+            return false;
+        }
+
+        private bool IsAlarmOn(Dictionary<String, AlarmState> states = null)
+        {
+            return HasAlarmWithState(AlarmState.ON, states);
         }
 
         protected override void HandleADMMessage(ADMMessage message, ArduinoDeviceManager adm)
@@ -203,11 +267,17 @@ namespace BBAlarmsService
         private void HandleRemoteAlarmMessage(MessageFilter remote, Message message)
         {
             RemoteAlarm a = (RemoteAlarm)remote;
-            OnAlarmStateChanged(a.DeviceID, a.State ? AlarmState.ON : AlarmState.OFF);
+            OnAlarmStateChanged(a.DeviceID, a.AlarmState);
         }
 
         private void OnAlarmStateChanged(String deviceID, AlarmState newState, String comments = null)
         {
+            //if this is called while testing then we end the test as his takes priority
+            if (IsTesting)
+            {
+                EndAlarmTest(String.Format("Ending because {0} changed state to {1}", deviceID, newState), null);
+            }
+
             //keep track of the new state in a ID to state map
             _alarmStates[deviceID] = newState;
 
@@ -223,7 +293,7 @@ namespace BBAlarmsService
             }
 
             //turn buzzer on or off
-            if (IsAlarmOn)
+            if (IsAlarmOn())
             {
                 _pilot.On();
                 _buzzer.On();
@@ -261,44 +331,24 @@ namespace BBAlarmsService
         override public bool HandleCommand(Connection cnn, Message message, String cmd, List<Object> args, Message response)
         {
             String id; //used for alarm id
+            MessageSchema schema = new MessageSchema(response);
             switch (cmd)
             {
                 case "list-alarms":
                     var rows = _asdb.SelectDevices();
-                    response.AddValue("AlarmDBIDs", rows.Select(i => i.ID));
-                    response.AddValue("AlarmDeviceIDs", rows.Select(i => i["device_id"]));
-                    response.AddValue("AlarmNames", rows.Select(i => i["alarm_name"]));
-                    response.AddValue("AlarmSources", rows.Select(i => i.IsNull("alarm_source") ? "local" : i.GetString("alarm_source")));
-                    response.AddValue("AlarmPins", rows.Select(i => i.GetInt("pin_number", 0)));
+                    schema.AddAlarms(rows);
                     return true;
 
                 case "alarm-status":
-                    List<String> alarmsOn = new List<String>();
-                    List<String> alarmsOff = new List<String>();
-                    List<String> alarmsDisabled = new List<String>();
-                    foreach (var kv in _alarmStates)
-                    {
-                        switch (kv.Value)
-                        {
-                            case AlarmState.ON:
-                                alarmsOn.Add(kv.Key); break;
-                            case AlarmState.OFF:
-                                alarmsOff.Add(kv.Key); break;
-                            case AlarmState.DISABLED:
-                                alarmsDisabled.Add(kv.Key); break;
-                        }
-                    }
-                    response.AddValue("AlarmsOn", alarmsOn);
-                    response.AddValue("AlarmsOff", alarmsOff);
-                    response.AddValue("AlarmsDisabled", alarmsDisabled);
-                    response.AddValue("AlarmOn", alarmsOn.Count > 0);
-                    response.AddValue("Silenced", _buzzer.IsSilenced);
+                    schema.AddAlarmStates(_alarmStates);
+                    schema.AddBuzzer(_buzzer);
+                    schema.AddTesting(IsTesting);
                     return true;
 
                 case "silence":
                     if (ADMS.Count == 0) throw new Exception("No boards connected");
                     int secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 60 * 5;
-                    if (IsAlarmOn && secs > 0)
+                    if (IsAlarmOn() && secs > 0)
                     {
                         _buzzer.Silence(secs * 1000);
                         message.Value = String.Format("Buzzer silenced for {0} seconds", secs);
@@ -335,6 +385,13 @@ namespace BBAlarmsService
                     response.Value = String.Format("Alarm {0} enabled", id);
                     return true;
 
+                case "test-alarm":
+                    if (args.Count == 0) throw new Exception("No alarm specified to test");
+                    id = args[0].ToString();
+                    if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
+                    StartAlarmTest(id);
+                    response.Value = String.Format("Testing alarm {0}", id);
+                    return true;
 
                 default:
                     return base.HandleCommand(cnn, message, cmd, args, response);
@@ -346,7 +403,23 @@ namespace BBAlarmsService
             switch (message.Type)
             {
                 case MessageType.COMMAND_RESPONSE:
-                    //message.Sender;
+                    var schema = new MessageSchema(message);
+                    var remoteStates = schema.GetAlarmStates();
+                    if (remoteStates != null)
+                    {
+                        foreach (var kv in remoteStates)
+                        {
+                            if (_alarmStates.ContainsKey(kv.Key) && _alarmStates[kv.Key] != kv.Value)
+                            {
+                                //A remote alarm has a different state from the one that we have recorded in this service so we
+                                //take the remote state as authority and upcate accordingly
+                                String msg = String.Format("Alarm {0} has state {1} but remote state {2} so updating locally", kv.Key, _alarmStates[kv.Key], kv.Value);
+                                Tracing?.TraceEvent(TraceEventType.Warning, 2000, msg);
+                                OnAlarmStateChanged(kv.Key, kv.Value, msg);
+                            }
+                        }
+                    }
+
                     break;
             }
             base.HandleClientMessage(cnn, message);
@@ -354,13 +427,45 @@ namespace BBAlarmsService
 
         private void MonitorRemoteAlarms(Object sender, System.Timers.ElapsedEventArgs ea)
         {
-
             Message message = new Message(Chetch.Messaging.MessageType.COMMAND);
 
             foreach (var client in _remoteClients)
             {
                 SendCommand(client, "alarm-status");
             }
+        }
+
+        //testing
+        private void StartAlarmTest(String deviceID)
+        {
+            if (_testingAlarmID != null) throw new Exception(String.Format("Cannot test alarm {0} as already testing {1}", deviceID, _testingAlarmID));
+            if (!_alarmStates.ContainsKey(deviceID)) throw new Exception(String.Format("No alarm found with id {0}", deviceID));
+            if (IsAlarmOn()) throw new Exception("Cannot test any alarm while an alarm is already on");
+            if (_alarmStates[deviceID] != AlarmState.OFF && _alarmStates[deviceID] != AlarmState.ENABLED) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", deviceID, _alarmStates[deviceID]));
+
+            OnAlarmStateChanged(deviceID, AlarmState.ON, "Start alarm test");
+
+            //note: these have to be placed after call to state change (see OnStateChange method)
+            _testingAlarmID = deviceID;
+            _testAlarmTimer.Start();
+        }
+
+        private void EndAlarmTest(Object sender, System.Timers.ElapsedEventArgs ea)
+        {
+            _testAlarmTimer.Stop();
+            var deviceID = _testingAlarmID;
+            _testingAlarmID = null;
+
+            String logMsg;
+            if (sender is String)
+            {
+                logMsg = sender.ToString();
+            }
+            else
+            {
+                logMsg = "End alarm test after timeout";
+            }
+            OnAlarmStateChanged(deviceID, AlarmState.OFF, logMsg);
         }
     } //end class
 }
