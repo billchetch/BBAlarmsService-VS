@@ -376,7 +376,6 @@ namespace BBAlarmsService
                     if (args.Count == 0) throw new Exception("No alarm specified to disable");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
-                    var adm = GetADM(null);
                     EnableAlarm(id, false);
                     OnAlarmStateChanged(id, AlarmState.DISABLED, String.Format("Command sent from {0}", message.Sender));
                     response.Value = String.Format("Alarm {0} disabled", id);
