@@ -86,8 +86,7 @@ namespace BBAlarmsService
         {
             OFF,
             ON,
-            DISABLED,
-            ENABLED
+            DISABLED
         }
 
         class RemoteAlarm : ADMMessageFilter
@@ -388,7 +387,7 @@ namespace BBAlarmsService
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
                     EnableAlarm(id, true);
-                    OnAlarmStateChanged(id, AlarmState.ENABLED, String.Format("Command sent from {0}", message.Sender));
+                    OnAlarmStateChanged(id, AlarmState.OFF, String.Format("Command sent from {0}", message.Sender));
                     response.Value = String.Format("Alarm {0} enabled", id);
                     return true;
 
@@ -448,7 +447,7 @@ namespace BBAlarmsService
             if (IsTesting) throw new Exception(String.Format("Cannot test alarm {0} as already testing {1}", deviceID, _testingAlarmID));
             if (!_alarmStates.ContainsKey(deviceID)) throw new Exception(String.Format("No alarm found with id {0}", deviceID));
             if (IsAlarmOn()) throw new Exception("Cannot test any alarm while an alarm is already on");
-            if (_alarmStates[deviceID] != AlarmState.OFF && _alarmStates[deviceID] != AlarmState.ENABLED) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", deviceID, _alarmStates[deviceID]));
+            if (_alarmStates[deviceID] != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", deviceID, _alarmStates[deviceID]));
 
             OnAlarmStateChanged(deviceID, AlarmState.ON, "Start alarm test", true);
 
