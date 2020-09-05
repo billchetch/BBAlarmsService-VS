@@ -13,6 +13,14 @@ namespace BBAlarmsService
     {
         new public class MessageSchema : Chetch.Messaging.MessageSchema
         {
+            public const String COMMAND_ALARM_STATUS = "alarm-status";
+            public const String COMMAND_LIST_ALARMS = "list-alarms";
+            public const String COMMAND_SILENCE = "silence";
+            public const String COMMAND_UNSILENCE = "unsilence";
+            public const String COMMAND_DISABLE_ALARM = "disable-alarm";
+            public const String COMMAND_ENABLE_ALARM = "enable-alarm";
+            public const String COMMAND_TEST_ALARM = "test-alarm";
+            
             static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, bool testing = false)
             {
                 Message msg = new Message(MessageType.ALERT);
@@ -123,7 +131,6 @@ namespace BBAlarmsService
             }
         }
 
-
         public const int PILOT_LIGHT_PIN = 3;
         public const int BUZZER_PIN = 4;
         private AlarmsServiceDB _asdb;
@@ -218,17 +225,17 @@ namespace BBAlarmsService
             _monitorRemoteAlarmsTimer.Start();
         }
 
-        public override void AddCommandHelp(List<string> commandHelp)
+        public override void AddCommandHelp()
         {
-            base.AddCommandHelp(commandHelp);
+            base.AddCommandHelp();
 
-            commandHelp.Add("list-alarms:  Lists active alarms in the alarms database");
-            commandHelp.Add("alarm-status:  Lists alarms currently on and currently off");
-            commandHelp.Add("silence: Turn buzzer off for <seconds>");
-            commandHelp.Add("unsilence: Unsilence buzzer");
-            commandHelp.Add("disable-alarm: Set <alarm> to State DISABLED");
-            commandHelp.Add("enable-alarm: Set <alarm> to state ENABLED");
-            commandHelp.Add("test-alarm: Set <alarm> to ON for a short period of time");
+            AddCommandHelp(MessageSchema.COMMAND_LIST_ALARMS, "Lists active alarms in the alarms database");
+            AddCommandHelp(MessageSchema.COMMAND_ALARM_STATUS, "Lists state of alarms and some other stuff");
+            AddCommandHelp(MessageSchema.COMMAND_SILENCE, "Turn buzzer off for <seconds>");
+            AddCommandHelp(MessageSchema.COMMAND_UNSILENCE,  "Unsilence buzzer");
+            AddCommandHelp(MessageSchema.COMMAND_DISABLE_ALARM,"Set <alarm> to State DISABLED");
+            AddCommandHelp(MessageSchema.COMMAND_ENABLE_ALARM, "Set <alarm> to state ENABLED");
+            AddCommandHelp(MessageSchema.COMMAND_TEST_ALARM, "Set <alarm> to ON for a short period of time");
         }
 
         private bool HasAlarmWithState(AlarmState alarmState, Dictionary<String, AlarmState> states = null)
@@ -340,18 +347,18 @@ namespace BBAlarmsService
             MessageSchema schema = new MessageSchema(response);
             switch (cmd)
             {
-                case "list-alarms":
+                case MessageSchema.COMMAND_LIST_ALARMS:
                     var rows = _asdb.SelectDevices();
                     schema.AddAlarms(rows);
                     return true;
 
-                case "alarm-status":
+                case MessageSchema.COMMAND_ALARM_STATUS:
                     schema.AddAlarmStates(_alarmStates);
                     schema.AddBuzzer(_buzzer);
                     schema.AddTesting(IsTesting);
                     return true;
 
-                case "silence":
+                case MessageSchema.COMMAND_SILENCE:
                     if (ADMS.Count == 0) throw new Exception("No boards connected");
                     int secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 60 * 5;
                     if (IsAlarmOn() && secs > 0)
@@ -366,13 +373,13 @@ namespace BBAlarmsService
                         return false;
                     }
 
-                case "unsilence":
+                case MessageSchema.COMMAND_UNSILENCE:
                     if (ADMS.Count == 0) throw new Exception("No boards connected");
                     _buzzer.Unsilence();
                     message.Value = "Buzzer unsilenced";
                     return true;
 
-                case "disable-alarm":
+                case MessageSchema.COMMAND_DISABLE_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to disable");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
@@ -381,7 +388,7 @@ namespace BBAlarmsService
                     response.Value = String.Format("Alarm {0} disabled", id);
                     return true;
 
-                case "enable-alarm":
+                case MessageSchema.COMMAND_ENABLE_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to enable");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
@@ -390,7 +397,7 @@ namespace BBAlarmsService
                     response.Value = String.Format("Alarm {0} enabled", id);
                     return true;
 
-                case "test-alarm":
+                case MessageSchema.COMMAND_TEST_ALARM: 
                     if (args.Count == 0) throw new Exception("No alarm specified to test");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
@@ -436,7 +443,7 @@ namespace BBAlarmsService
 
             foreach (var client in _remoteClients)
             {
-                SendCommand(client, "alarm-status");
+                SendCommand(client, MessageSchema.COMMAND_ALARM_STATUS);
             }
         }
 
