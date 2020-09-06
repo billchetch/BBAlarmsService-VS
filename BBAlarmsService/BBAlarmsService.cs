@@ -36,7 +36,7 @@ namespace BBAlarmsService
 
             public void AddAlarms(List<Chetch.Database.DBRow> rows)
             {
-                Message.AddValue("Alarms", rows.Select(i => i.GenerateParamString()).ToList());
+                Message.AddValue("Alarms", rows.Select(i => i.GenerateParamString().Replace("'", "")).ToList());
             }
 
             public List<String> GetAlarms()
