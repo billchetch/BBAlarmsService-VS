@@ -150,7 +150,7 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _testingAlarmID != null; } }
 
-        public BBAlarmsService() : base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog")
+        public BBAlarmsService() :base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog")
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             AllowedPorts = Properties.Settings.Default.AllowedPorts;
