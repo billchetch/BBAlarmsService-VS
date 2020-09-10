@@ -21,12 +21,13 @@ namespace BBAlarmsService
             public const String COMMAND_ENABLE_ALARM = "enable-alarm";
             public const String COMMAND_TEST_ALARM = "test-alarm";
             
-            static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, bool testing = false)
+            static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, bool buzzerSilenced, bool testing = false)
             {
                 Message msg = new Message(MessageType.ALERT);
                 msg.AddValue("DeviceID", deviceID);
                 msg.AddValue("AlarmState", alarmState);
                 msg.AddValue("Testing", testing);
+                msg.AddValue("Silenced", buzzerSilenced);
                 return msg;
             }
 
@@ -264,12 +265,11 @@ namespace BBAlarmsService
                     {
                         bool newState = message.GetBool("State");
                         OnAlarmStateChanged(dev.ID, newState ? AlarmState.ON : AlarmState.OFF);
-                        if (message.Tag == 0) return; //i.e. hasn't been specifically requested so do not call base method as this will broadcast but the event is already broadcast
+                        if (message.Tag == 0) return; //i.e. hasn't been specifically requested so do not call base method as this will broadcast (which is not necessary because OnAlarmStateChanged broadcasts)
                     }
                     break;
             }
 
-            Tracing.TraceEvent(TraceEventType.Information, 0, "Message type={0}", message.Type);
             base.HandleADMMessage(message, adm);
         }
 
@@ -314,7 +314,7 @@ namespace BBAlarmsService
             }
 
             //finally we broadcast to any listeners
-            var alert = MessageSchema.AlertAlarmStateChange(deviceID, newState, testing);
+            var alert = MessageSchema.AlertAlarmStateChange(deviceID, newState, _buzzer.IsSilenced, testing);
             Broadcast(alert);
         }
 
@@ -361,9 +361,10 @@ namespace BBAlarmsService
                 case MessageSchema.COMMAND_SILENCE:
                     if (ADMS.Count == 0) throw new Exception("No boards connected");
                     int secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 60 * 5;
-                    if (IsAlarmOn() && secs > 0)
+                    if (IsAlarmOn() && !_buzzer.IsSilenced && secs > 0)
                     {
                         _buzzer.Silence(secs * 1000);
+                        schema.AddBuzzer(_buzzer);
                         message.Value = String.Format("Buzzer silenced for {0} seconds", secs);
                         return true;
                     }
@@ -376,6 +377,7 @@ namespace BBAlarmsService
                 case MessageSchema.COMMAND_UNSILENCE:
                     if (ADMS.Count == 0) throw new Exception("No boards connected");
                     _buzzer.Unsilence();
+                    schema.AddBuzzer(_buzzer);
                     message.Value = "Buzzer unsilenced";
                     return true;
 
