@@ -21,13 +21,16 @@ namespace BBAlarmsService
             public const String COMMAND_ENABLE_ALARM = "enable-alarm";
             public const String COMMAND_TEST_ALARM = "test-alarm";
             
-            static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, bool buzzerSilenced, bool testing = false)
+            static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, Buzzer buzzer, Chetch.Arduino.Devices.Switch pilot, bool testing = false)
             {
                 Message msg = new Message(MessageType.ALERT);
                 msg.AddValue("DeviceID", deviceID);
                 msg.AddValue("AlarmState", alarmState);
                 msg.AddValue("Testing", testing);
-                msg.AddValue("Silenced", buzzerSilenced);
+
+                var schema = new MessageSchema(msg);
+                schema.AddBuzzer(buzzer);
+                schema.AddPilot(pilot);
                 return msg;
             }
 
@@ -67,7 +70,16 @@ namespace BBAlarmsService
             public void AddBuzzer(Buzzer buzzer)
             {
                 Message.AddValue("Buzzer", buzzer.ToString());
-                Message.AddValue("Silenced", buzzer.IsSilenced);
+                Message.AddValue("BuzzerID", buzzer.ID);
+                Message.AddValue("BuzzerOn", buzzer.IsOn);
+                Message.AddValue("BuzzerSilenced", buzzer.IsSilenced);
+            }
+
+            public void AddPilot(Chetch.Arduino.Devices.Switch pilot)
+            {
+                Message.AddValue("Pilot", pilot.ToString());
+                Message.AddValue("PilotID", pilot.ID);
+                Message.AddValue("PilotOn", pilot.IsOn);
             }
 
             public bool IsAlert()
@@ -314,7 +326,7 @@ namespace BBAlarmsService
             }
 
             //finally we broadcast to any listeners
-            var alert = MessageSchema.AlertAlarmStateChange(deviceID, newState, _buzzer.IsSilenced, testing);
+            var alert = MessageSchema.AlertAlarmStateChange(deviceID, newState, _buzzer, _pilot, testing);
             Broadcast(alert);
         }
 
@@ -355,6 +367,7 @@ namespace BBAlarmsService
                 case MessageSchema.COMMAND_ALARM_STATUS:
                     schema.AddAlarmStates(_alarmStates);
                     schema.AddBuzzer(_buzzer);
+                    schema.AddPilot(_pilot);
                     schema.AddTesting(IsTesting);
                     return true;
 
