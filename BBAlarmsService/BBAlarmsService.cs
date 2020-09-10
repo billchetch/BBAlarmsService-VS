@@ -269,15 +269,25 @@ namespace BBAlarmsService
 
         protected override void HandleADMMessage(ADMMessage message, ArduinoDeviceManager adm)
         {
+            ArduinoDevice dev;
             switch (message.Type)
             {
                 case MessageType.DATA:
-                    var dev = adm.GetDevice(message.Sender);
+                    dev = adm.GetDevice(message.Sender);
                     if (dev != null && _alarmStates.ContainsKey(dev.ID) && message.HasValue("State"))
                     {
                         bool newState = message.GetBool("State");
                         OnAlarmStateChanged(dev.ID, newState ? AlarmState.ON : AlarmState.OFF);
                         if (message.Tag == 0) return; //i.e. hasn't been specifically requested so do not call base method as this will broadcast (which is not necessary because OnAlarmStateChanged broadcasts)
+                    }
+                    break;
+
+                case MessageType.NOTIFICATION:
+                    dev = adm.GetDevice(message.Sender);
+                    if (dev.ID.Equals(_buzzer.ID))
+                    {
+                        var schema = new MessageSchema(message);
+                        schema.AddBuzzer(_buzzer);
                     }
                     break;
             }
