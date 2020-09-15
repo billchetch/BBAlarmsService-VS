@@ -51,15 +51,6 @@ namespace BBAlarmsService
             public void AddAlarmStates(Dictionary<String, AlarmState> states)
             {
                 Message.AddValue("AlarmStates", states);
-                bool on = false;
-                foreach (var astate in states.Values)
-                {
-                    if (astate == AlarmState.ON)
-                    {
-                        on = true;
-                        break;
-                    }
-                }
             }
 
             public Dictionary<String, AlarmState> GetAlarmStates()
