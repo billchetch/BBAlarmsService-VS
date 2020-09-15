@@ -69,6 +69,8 @@ namespace BBAlarmsService
 
             public void AddBuzzer(Buzzer buzzer)
             {
+                if (buzzer == null) return;
+
                 Message.AddValue("Buzzer", buzzer.ToString());
                 Message.AddValue("BuzzerID", buzzer.ID);
                 Message.AddValue("BuzzerOn", buzzer.IsOn);
@@ -77,6 +79,8 @@ namespace BBAlarmsService
 
             public void AddPilot(Chetch.Arduino.Devices.Switch pilot)
             {
+                if (pilot == null) return;
+
                 Message.AddValue("Pilot", pilot.ToString());
                 Message.AddValue("PilotID", pilot.ID);
                 Message.AddValue("PilotOn", pilot.IsOn);
