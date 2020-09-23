@@ -45,7 +45,7 @@ namespace BBAlarmsService
             return SelectRow("alarm", "*", deviceID);
         }
 
-        public long LogStateChange(String deviceID, String newState, String comments = null)
+        public long LogStateChange(String deviceID, String newState, String alarmMessage = null, String comments = null)
         {
             var row = SelectDevice(deviceID);
             if (row == null) throw new Exception("No device found with ID " + deviceID);
@@ -53,6 +53,7 @@ namespace BBAlarmsService
             var newRow = new DBRow();
             newRow["alarm_state"] = newState;
             newRow["alarm_id"] = row.ID;
+            if (alarmMessage != null) newRow["alarm_message"] = alarmMessage;
             if (comments != null) newRow["comments"] = comments;
 
             return Insert("alarm_log", newRow);
