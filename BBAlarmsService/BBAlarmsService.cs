@@ -49,6 +49,14 @@ namespace BBAlarmsService
                 return Message.GetList<String>("Alarms");
             }
 
+            public void AddAlarmStatus(Dictionary<String, AlarmState> states, Buzzer buzzer, Chetch.Arduino.Devices.Switch pilot, bool testing = false)
+            {
+                AddAlarmStates(states);
+                AddBuzzer(buzzer);
+                AddPilot(pilot);
+                AddTesting(testing);
+            }
+
             public void AddAlarmStates(Dictionary<String, AlarmState> states)
             {
                 Message.AddValue("AlarmStates", states);
@@ -154,7 +162,7 @@ namespace BBAlarmsService
         private Chetch.Arduino.Devices.Switch _pilot;
         private Buzzer _buzzer;
 
-        private System.Timers.Timer _monitorRemoteAlarmsTimer = null;
+        private System.Timers.Timer _updateAlarmStatesTimer = null; //for remote alarms and also broadcast to clients
         private List<String> _remoteClients = new List<String>();
 
         private String _testingAlarmID = null;
@@ -166,7 +174,7 @@ namespace BBAlarmsService
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             AllowedPorts = Properties.Settings.Default.AllowedPorts;
-            //MaxPingResponseTime = 10;
+            MaxPingResponseTime = 20;
             try
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connecting to Alarms database...");
@@ -201,9 +209,9 @@ namespace BBAlarmsService
                     _alarmMessages[deviceID] = null;
                 }
 
-                _monitorRemoteAlarmsTimer = new System.Timers.Timer();
-                _monitorRemoteAlarmsTimer.Interval = 30 * 1000;
-                _monitorRemoteAlarmsTimer.Elapsed += new System.Timers.ElapsedEventHandler(MonitorRemoteAlarms);
+                _updateAlarmStatesTimer = new System.Timers.Timer();
+                _updateAlarmStatesTimer.Interval = 30 * 1000;
+                _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(UpdateAlarmStates);
 
                 _testAlarmTimer = new System.Timers.Timer();
                 _testAlarmTimer.Interval = 5 * 1000;
@@ -236,7 +244,7 @@ namespace BBAlarmsService
             base.OnClientConnect(cnn);
 
             //TODO: uncomment monitor start
-            _monitorRemoteAlarmsTimer.Start();
+            _updateAlarmStatesTimer.Start();
         }
 
         public override void AddCommandHelp()
@@ -308,7 +316,7 @@ namespace BBAlarmsService
             //if this is called while testing then we end the test as his takes priority
             if (IsTesting)
             {
-                EndAlarmTest(String.Format("Ending because {0} changed state to {1}", deviceID, newState), null);
+                EndAlarmTest(String.Format("Ending test because {0} changed state to {1}", deviceID, newState), null);
             }
 
             //keep track of the new state in a ID to state map
@@ -378,10 +386,7 @@ namespace BBAlarmsService
                     return true;
 
                 case MessageSchema.COMMAND_ALARM_STATUS:
-                    schema.AddAlarmStates(_alarmStates);
-                    schema.AddBuzzer(_buzzer);
-                    schema.AddPilot(_pilot);
-                    schema.AddTesting(IsTesting);
+                    schema.AddAlarmStatus(_alarmStates, _buzzer, _pilot, IsTesting);
                     return true;
 
                 case MessageSchema.COMMAND_SILENCE:
@@ -465,14 +470,19 @@ namespace BBAlarmsService
             base.HandleClientMessage(cnn, message);
         }
 
-        private void MonitorRemoteAlarms(Object sender, System.Timers.ElapsedEventArgs ea)
+        private void UpdateAlarmStates(Object sender, System.Timers.ElapsedEventArgs ea)
         {
+            //request remote alarm states
             Message message = new Message(Chetch.Messaging.MessageType.COMMAND);
-
             foreach (var client in _remoteClients)
             {
                 SendCommand(client, MessageSchema.COMMAND_ALARM_STATUS);
             }
+
+            //broadcast current states
+            MessageSchema schema = new MessageSchema(new Message());
+            schema.AddAlarmStatus(_alarmStates, _buzzer, _pilot, IsTesting);
+            Broadcast(message);
         }
 
         //testing
