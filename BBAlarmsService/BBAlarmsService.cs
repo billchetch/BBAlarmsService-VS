@@ -21,10 +21,11 @@ namespace BBAlarmsService
             public const String COMMAND_ENABLE_ALARM = "enable-alarm";
             public const String COMMAND_TEST_ALARM = "test-alarm";
 
+            //this is for this service to broadcast to listeners
             static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, String alarmMessage, Buzzer buzzer, Chetch.Arduino.Devices.Switch pilot, bool testing = false)
             {
                 Message msg = new Message(MessageType.ALERT);
-                msg.AddValue("DeviceID", deviceID);
+                msg.AddValue(ADMService.MessageSchema.DEVICE_ID, deviceID);
                 msg.AddValue("AlarmState", alarmState);
                 msg.AddValue("AlarmMessage", alarmMessage);
                 msg.AddValue("Testing", testing);
@@ -32,6 +33,17 @@ namespace BBAlarmsService
                 var schema = new MessageSchema(msg);
                 schema.AddBuzzer(buzzer);
                 schema.AddPilot(pilot);
+                return msg;
+            }
+
+            //this is for other service to alert this service
+            static public Message RaiseAlarm(String deviceID, bool alarmOn, String alarmMessage, bool testing = false)
+            {
+                Message msg = new Message(MessageType.ALERT);
+                msg.AddValue(ADMService.MessageSchema.DEVICE_ID, deviceID);
+                msg.AddValue("AlarmState", alarmOn ? AlarmState.ON : AlarmState.OFF);
+                msg.AddValue("AlarmMessage", alarmMessage);
+                msg.AddValue("Testing", testing);
                 return msg;
             }
 
@@ -114,7 +126,7 @@ namespace BBAlarmsService
             DISABLED
         }
 
-        class RemoteAlarm : ADMMessageFilter
+        class RemoteAlarm : ArduinoDeviceMessageFilter
         {
             public String AlarmName { get; internal set; }
 
@@ -126,7 +138,7 @@ namespace BBAlarmsService
 
             private MessageSchema _schema = new MessageSchema();
 
-            public RemoteAlarm(String deviceID, String alarmName, String clientName, Action<MessageFilter, Message> onMatched) : base(deviceID, clientName, Chetch.Messaging.MessageType.ALERT, onMatched)
+            public RemoteAlarm(String deviceID, String alarmName, String clientName) : base(deviceID, clientName, Chetch.Messaging.MessageType.ALERT)
             {
                 AlarmName = alarmName;
             }
@@ -140,11 +152,8 @@ namespace BBAlarmsService
             {
                 if (!Enabled) return;
                 _schema.Message = message;
-                if (_schema.IsAlert())
-                {
-                    AlarmState = _schema.GetAlarmState();
-                    AlarmMessage = _schema.GetAlarmMessage();
-                }
+                AlarmState = _schema.GetAlarmState();
+                AlarmMessage = _schema.GetAlarmMessage();
 
                 base.OnMatched(message);
             }
@@ -170,10 +179,11 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _testingAlarmID != null; } }
 
-        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog")
+        public BBAlarmsService() : base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog")
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
-            AllowedPorts = Properties.Settings.Default.AllowedPorts;
+            RequiredBoards = "ALM1";
+            AddAllowedPorts(Properties.Settings.Default.AllowedPorts);
             MaxPingResponseTime = 20;
             try
             {
@@ -198,10 +208,11 @@ namespace BBAlarmsService
                     else
                     {
                         //The alarm is remote so we need to subscribe to the remote service and listen
-                        RemoteAlarm ra = new RemoteAlarm(deviceID, row.GetString("alarm_name"), source, HandleRemoteAlarmMessage);
+                        RemoteAlarm ra = new RemoteAlarm(deviceID, row.GetString("alarm_name"), source);
+                        ra.HandleMatched += HandleRemoteAlarmMessage;
                         _remoteAlarms.Add(ra);
                         Subscribe(ra);
-                        Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} alarm @ {1} with id {2}", ra.AlarmName, source, ra.DeviceID);
+                        Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} alarm @ {1} with id {2}", ra.AlarmName, source, deviceID);
 
                         if (!_remoteClients.Contains(source)) _remoteClients.Add(source);
                     }
