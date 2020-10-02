@@ -11,7 +11,7 @@ namespace BBAlarmsService
 {
     public class BBAlarmsService : ADMService
     {
-        new public class MessageSchema : Chetch.Messaging.MessageSchema
+        new public class MessageSchema : ADMService.MessageSchema
         {
             public const String COMMAND_ALARM_STATUS = "alarm-status";
             public const String COMMAND_LIST_ALARMS = "list-alarms";
@@ -24,29 +24,15 @@ namespace BBAlarmsService
             //this is for this service to broadcast to listeners
             static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, String alarmMessage, Buzzer buzzer, Chetch.Arduino.Devices.Switch pilot, bool testing = false)
             {
-                Message msg = new Message(MessageType.ALERT);
-                msg.AddValue(ADMService.MessageSchema.DEVICE_ID, deviceID);
+                Message msg = RaiseAlarm(deviceID, alarmState == AlarmState.ON, alarmMessage, testing);
                 msg.AddValue("AlarmState", alarmState);
-                msg.AddValue("AlarmMessage", alarmMessage);
-                msg.AddValue("Testing", testing);
 
                 var schema = new MessageSchema(msg);
                 schema.AddBuzzer(buzzer);
                 schema.AddPilot(pilot);
                 return msg;
             }
-
-            //this is for other service to alert this service
-            static public Message RaiseAlarm(String deviceID, bool alarmOn, String alarmMessage, bool testing = false)
-            {
-                Message msg = new Message(MessageType.ALERT);
-                msg.AddValue(ADMService.MessageSchema.DEVICE_ID, deviceID);
-                msg.AddValue("AlarmState", alarmOn ? AlarmState.ON : AlarmState.OFF);
-                msg.AddValue("AlarmMessage", alarmMessage);
-                msg.AddValue("Testing", testing);
-                return msg;
-            }
-
+            
             public MessageSchema() { }
 
             public MessageSchema(Message message) : base(message) { }
@@ -101,13 +87,10 @@ namespace BBAlarmsService
 
             public AlarmState GetAlarmState()
             {
-                return Message.GetEnum<AlarmState>("AlarmState");
+                return IsAlarmOn() ? AlarmState.ON : AlarmState.OFF;
             }
 
-            public String GetAlarmMessage()
-            {
-                return Message.HasValue("AlarmMessage") ? Message.GetString("AlarmMessage") : null;
-            }
+            
             public void AddTesting(bool testing)
             {
                 Message.AddValue("Testing", testing);
@@ -179,7 +162,7 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _testingAlarmID != null; } }
 
-        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog")
+        public BBAlarmsService() : base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // 
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             RequiredBoards = "ALM1";
@@ -476,6 +459,9 @@ namespace BBAlarmsService
                         }
                     }
 
+                    break;
+
+                case MessageType.ALERT:
                     break;
             }
             base.HandleClientMessage(cnn, message);
