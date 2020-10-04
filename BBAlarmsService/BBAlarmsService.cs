@@ -109,10 +109,32 @@ namespace BBAlarmsService
             DISABLED
         }
 
+        public enum AlarmSeverityLevel
+        {
+            CRITICAL = 1,
+            SEVERE,
+            MODERATE,
+            MINOR
+        }
+
+        class LocalAlarm
+        {
+            public String AlarmName { get; internal set; }
+            public AlarmSeverityLevel SeverityLevel { get; internal set; }
+            public SwitchSensor AlarmSwitch { get; internal set; }
+            
+            public LocalAlarm(String alarmName, AlarmSeverityLevel severityLevel, SwitchSensor alarmSwitch)
+            {
+                AlarmName = alarmName;
+                SeverityLevel = severityLevel;
+                AlarmSwitch = alarmSwitch;
+            }
+        }
+
         class RemoteAlarm : ArduinoDeviceMessageFilter
         {
             public String AlarmName { get; internal set; }
-
+            public AlarmSeverityLevel SeverityLevel { get; internal set; }
             public AlarmState AlarmState { get; internal set; } = AlarmState.OFF;
             public String AlarmMessage { get; internal set; }
             public bool IsOn { get { return AlarmState == AlarmState.ON; } }
@@ -121,9 +143,10 @@ namespace BBAlarmsService
 
             private MessageSchema _schema = new MessageSchema();
 
-            public RemoteAlarm(String deviceID, String alarmName, String clientName) : base(deviceID, clientName, Chetch.Messaging.MessageType.ALERT)
+            public RemoteAlarm(String deviceID, String alarmName, AlarmSeverityLevel severityLevel, String clientName) : base(deviceID, clientName, Chetch.Messaging.MessageType.ALERT)
             {
                 AlarmName = alarmName;
+                SeverityLevel = severityLevel;
             }
 
             public void Enable(bool enabled = true)
@@ -146,7 +169,7 @@ namespace BBAlarmsService
         public const int BUZZER_PIN = 4;
         private AlarmsServiceDB _asdb;
 
-        private List<SwitchSensor> _localAlarms = new List<SwitchSensor>();
+        private List<LocalAlarm> _localAlarms = new List<LocalAlarm>();
         private List<RemoteAlarm> _remoteAlarms = new List<RemoteAlarm>();
         private Dictionary<String, AlarmState> _alarmStates = new Dictionary<String, AlarmState>();
         private Dictionary<String, String> _alarmMessages = new Dictionary<String, String>();
@@ -162,7 +185,7 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _testingAlarmID != null; } }
 
-        public BBAlarmsService() : base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // 
+        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") //  base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") /
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             RequiredBoards = "ALM1";
@@ -179,19 +202,22 @@ namespace BBAlarmsService
                 {
                     String source = row.GetString("alarm_source");
                     String deviceID = row.GetString("device_id");
+                    String alarmName = row.GetString("alarm_name");
+                    AlarmSeverityLevel severityLevel = (AlarmSeverityLevel)row.GetUInt("alarm_severity_level");
                     if (source == null || source == String.Empty)
                     {
                         //The alarm is local and provided by an ADM input
                         int pin = row.GetInt("pin_number");
                         if (pin == 0) throw new Exception("BBAlarmsService: Cannot have an alarm pin 0");
-                        SwitchSensor la = new SwitchSensor(pin, row.GetInt("noise_threshold"), deviceID, row.GetString("device_name"));
+                        SwitchSensor ss = new SwitchSensor(pin, row.GetInt("noise_threshold"), deviceID, row.GetString("device_name"));
+                        LocalAlarm la = new LocalAlarm(alarmName, severityLevel, ss);
                         _localAlarms.Add(la);
-                        Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} local alarm with id {1} and name {2} for pin {3}", row["alarm_name"], la.ID, la.Name, pin);
+                        Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} local alarm with device id {1} and device name {2} for pin {3}", row["alarm_name"], ss.ID, ss.Name, pin);
                     }
                     else
                     {
                         //The alarm is remote so we need to subscribe to the remote service and listen
-                        RemoteAlarm ra = new RemoteAlarm(deviceID, row.GetString("alarm_name"), source);
+                        RemoteAlarm ra = new RemoteAlarm(deviceID, alarmName, severityLevel, source);
                         ra.HandleMatched += HandleRemoteAlarmMessage;
                         _remoteAlarms.Add(ra);
                         Subscribe(ra);
@@ -228,8 +254,8 @@ namespace BBAlarmsService
 
             foreach (var a in _localAlarms)
             {
-                Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding alarm {0} {1} to {2}", a.ID, a.Name, adm.BoardID);
-                adm.AddDevice(a);
+                Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding alarm {0} {1} to {2}", a.AlarmSwitch.ID, a.AlarmName, adm.BoardID);
+                adm.AddDevice(a.AlarmSwitch);
             }
         }
 
@@ -350,9 +376,9 @@ namespace BBAlarmsService
             //search local alarms
             foreach (var a in _localAlarms)
             {
-                if (a.ID.Equals(id))
+                if (a.AlarmSwitch.ID.Equals(id))
                 {
-                    a.Enable(enable);
+                    a.AlarmSwitch.Enable(enable);
                     return;
                 }
             }
