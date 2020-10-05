@@ -242,7 +242,7 @@ namespace BBAlarmsService
             try
             {
                 //Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm device {0} change of state to {1}", deviceID, newState);
-                _asdb.LogStateChange(deviceID, newState.ToString(), alarmMessage, comments);
+                _asdb.LogStateChange(deviceID, newState, alarmMessage, comments);
             }
             catch (Exception e)
             {
@@ -250,10 +250,16 @@ namespace BBAlarmsService
             }
 
             //turn buzzer on or off
-            if (IsAlarmOn())
+            if (IsAlarmOn()) //if at least one alarm is on
             {
                 _pilot.On();
-                _buzzer.On();
+                if (HasAlarmWithState(AlarmState.CRITICAL))
+                {
+                    _buzzer.On();
+                } else
+                {
+                    _buzzer.Off();
+                }
             }
             else
             {
@@ -411,8 +417,12 @@ namespace BBAlarmsService
             if (IsAlarmOn()) throw new Exception("Cannot test any alarm while an alarm is already on");
             if (_alarmStates[deviceID] != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", deviceID, _alarmStates[deviceID]));
 
+            var rand = new Random();
+            Array values = Enum.GetValues(typeof(AlarmState));
+            AlarmState alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
+            
             String msg = String.Format("Start alarm test on {0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-            OnAlarmStateChanged(deviceID, AlarmState.CRITICAL, msg, "Start alarm test", true);
+            OnAlarmStateChanged(deviceID, alarmState, msg, "Start alarm test", true);
 
             //note: these have to be placed after call to state change (see OnStateChange method)
             _testingAlarmID = deviceID;
