@@ -371,8 +371,8 @@ namespace BBAlarmsService
                         {
                             if (_alarmStates.ContainsKey(kv.Key) && _alarmStates[kv.Key] != kv.Value)
                             {
-                                //A remote alarm has a different state from the one that we have recorded in this service so we
-                                //take the remote state as authority and upcate accordingly
+                                //A remote alarm has a different state from the one that we have recorded in this service
+                                //so we take the remote state as authority and upcate accordingly
                                 String msg = String.Format("Alarm {0} has state {1} but remote state {2} so updating locally", kv.Key, _alarmStates[kv.Key], kv.Value);
                                 Tracing?.TraceEvent(TraceEventType.Warning, 2000, msg);
                                 OnAlarmStateChanged(kv.Key, kv.Value, msg);
