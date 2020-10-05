@@ -11,122 +11,14 @@ namespace BBAlarmsService
 {
     public class BBAlarmsService : ADMService
     {
-        new public class MessageSchema : ADMService.MessageSchema
-        {
-            public const String COMMAND_ALARM_STATUS = "alarm-status";
-            public const String COMMAND_LIST_ALARMS = "list-alarms";
-            public const String COMMAND_SILENCE = "silence";
-            public const String COMMAND_UNSILENCE = "unsilence";
-            public const String COMMAND_DISABLE_ALARM = "disable-alarm";
-            public const String COMMAND_ENABLE_ALARM = "enable-alarm";
-            public const String COMMAND_TEST_ALARM = "test-alarm";
-
-            //this is for this service to broadcast to listeners
-            static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, String alarmMessage, Buzzer buzzer, Chetch.Arduino.Devices.Switch pilot, bool testing = false)
-            {
-                Message msg = RaiseAlarm(deviceID, alarmState == AlarmState.ON, alarmMessage, testing);
-                msg.AddValue("AlarmState", alarmState);
-
-                var schema = new MessageSchema(msg);
-                schema.AddBuzzer(buzzer);
-                schema.AddPilot(pilot);
-                return msg;
-            }
-            
-            public MessageSchema() { }
-
-            public MessageSchema(Message message) : base(message) { }
-
-            public void AddAlarms(List<Chetch.Database.DBRow> rows)
-            {
-                Message.AddValue("Alarms", rows.Select(i => i.GenerateParamString(true)).ToList());
-            }
-
-            public List<String> GetAlarms()
-            {
-                return Message.GetList<String>("Alarms");
-            }
-
-            public void AddAlarmStatus(Dictionary<String, AlarmState> states, Buzzer buzzer, Chetch.Arduino.Devices.Switch pilot, bool testing = false)
-            {
-                AddAlarmStates(states);
-                AddBuzzer(buzzer);
-                AddPilot(pilot);
-                AddTesting(testing);
-            }
-
-            public void AddAlarmStates(Dictionary<String, AlarmState> states)
-            {
-                Message.AddValue("AlarmStates", states);
-            }
-
-            public Dictionary<String, AlarmState> GetAlarmStates()
-            {
-                return Message.HasValue("AlarmStates") ? Message.GetDictionary<AlarmState>("AlarmStates") : null;
-            }
-
-            public void AddBuzzer(Buzzer buzzer)
-            {
-                Message.AddValue("Buzzer", buzzer.ToString());
-                Message.AddValue("BuzzerID", buzzer.ID);
-                Message.AddValue("BuzzerOn", buzzer.IsOn);
-                Message.AddValue("BuzzerSilenced", buzzer.IsSilenced);
-            }
-
-            public void AddPilot(Chetch.Arduino.Devices.Switch pilot)
-            {
-                Message.AddValue("Pilot", pilot.ToString());
-                Message.AddValue("PilotID", pilot.ID);
-                Message.AddValue("PilotOn", pilot.IsOn);
-            }
-
-            public bool IsAlert()
-            {
-                return Message.HasValue("AlarmState");
-            }
-
-            public AlarmState GetAlarmState()
-            {
-                return IsAlarmOn() ? AlarmState.ON : AlarmState.OFF;
-            }
-
-            
-            public void AddTesting(bool testing)
-            {
-                Message.AddValue("Testing", testing);
-            }
-
-            public bool IsTesting()
-            {
-                return Message.GetBool("Testing");
-            }
-        }
-
-        public enum AlarmState
-        {
-            OFF,
-            ON,
-            DISABLED
-        }
-
-        public enum AlarmSeverityLevel
-        {
-            CRITICAL = 1,
-            SEVERE,
-            MODERATE,
-            MINOR
-        }
-
         class LocalAlarm
         {
             public String AlarmName { get; internal set; }
-            public AlarmSeverityLevel SeverityLevel { get; internal set; }
             public SwitchSensor AlarmSwitch { get; internal set; }
             
-            public LocalAlarm(String alarmName, AlarmSeverityLevel severityLevel, SwitchSensor alarmSwitch)
+            public LocalAlarm(String alarmName, SwitchSensor alarmSwitch)
             {
                 AlarmName = alarmName;
-                SeverityLevel = severityLevel;
                 AlarmSwitch = alarmSwitch;
             }
         }
@@ -134,19 +26,17 @@ namespace BBAlarmsService
         class RemoteAlarm : ArduinoDeviceMessageFilter
         {
             public String AlarmName { get; internal set; }
-            public AlarmSeverityLevel SeverityLevel { get; internal set; }
             public AlarmState AlarmState { get; internal set; } = AlarmState.OFF;
             public String AlarmMessage { get; internal set; }
-            public bool IsOn { get { return AlarmState == AlarmState.ON; } }
+            public bool IsOn { get { return AlarmsMessageSchema.IsAlarmStateOn(AlarmState); } }
             public bool IsOff { get { return !IsOn; } }
             public bool Enabled { get; internal set; } = true;
 
-            private MessageSchema _schema = new MessageSchema();
+            private AlarmsMessageSchema _schema = new AlarmsMessageSchema();
 
-            public RemoteAlarm(String deviceID, String alarmName, AlarmSeverityLevel severityLevel, String clientName) : base(deviceID, clientName, Chetch.Messaging.MessageType.ALERT)
+            public RemoteAlarm(String deviceID, String alarmName, String clientName) : base(deviceID, clientName, Chetch.Messaging.MessageType.ALERT)
             {
                 AlarmName = alarmName;
-                SeverityLevel = severityLevel;
             }
 
             public void Enable(bool enabled = true)
@@ -160,7 +50,7 @@ namespace BBAlarmsService
                 _schema.Message = message;
                 AlarmState = _schema.GetAlarmState();
                 AlarmMessage = _schema.GetAlarmMessage();
-
+                
                 base.OnMatched(message);
             }
         }
@@ -203,21 +93,20 @@ namespace BBAlarmsService
                     String source = row.GetString("alarm_source");
                     String deviceID = row.GetString("device_id");
                     String alarmName = row.GetString("alarm_name");
-                    AlarmSeverityLevel severityLevel = (AlarmSeverityLevel)row.GetUInt("alarm_severity_level");
                     if (source == null || source == String.Empty)
                     {
                         //The alarm is local and provided by an ADM input
                         int pin = row.GetInt("pin_number");
                         if (pin == 0) throw new Exception("BBAlarmsService: Cannot have an alarm pin 0");
                         SwitchSensor ss = new SwitchSensor(pin, row.GetInt("noise_threshold"), deviceID, row.GetString("device_name"));
-                        LocalAlarm la = new LocalAlarm(alarmName, severityLevel, ss);
+                        LocalAlarm la = new LocalAlarm(alarmName, ss);
                         _localAlarms.Add(la);
                         Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} local alarm with device id {1} and device name {2} for pin {3}", row["alarm_name"], ss.ID, ss.Name, pin);
                     }
                     else
                     {
                         //The alarm is remote so we need to subscribe to the remote service and listen
-                        RemoteAlarm ra = new RemoteAlarm(deviceID, alarmName, severityLevel, source);
+                        RemoteAlarm ra = new RemoteAlarm(deviceID, alarmName, source);
                         ra.HandleMatched += HandleRemoteAlarmMessage;
                         _remoteAlarms.Add(ra);
                         Subscribe(ra);
@@ -271,13 +160,13 @@ namespace BBAlarmsService
         {
             base.AddCommandHelp();
 
-            AddCommandHelp(MessageSchema.COMMAND_LIST_ALARMS, "Lists active alarms in the alarms database");
-            AddCommandHelp(MessageSchema.COMMAND_ALARM_STATUS, "Lists state of alarms and some other stuff");
-            AddCommandHelp(MessageSchema.COMMAND_SILENCE, "Turn buzzer off for <seconds>");
-            AddCommandHelp(MessageSchema.COMMAND_UNSILENCE, "Unsilence buzzer");
-            AddCommandHelp(MessageSchema.COMMAND_DISABLE_ALARM, "Set <alarm> to State DISABLED");
-            AddCommandHelp(MessageSchema.COMMAND_ENABLE_ALARM, "Set <alarm> to state ENABLED");
-            AddCommandHelp(MessageSchema.COMMAND_TEST_ALARM, "Set <alarm> to ON for a short period of time");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_LIST_ALARMS, "Lists active alarms in the alarms database");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_ALARM_STATUS, "Lists state of alarms and some other stuff");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_SILENCE, "Turn buzzer off for <seconds>");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_UNSILENCE, "Unsilence buzzer");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_DISABLE_ALARM, "Set <alarm> to State DISABLED");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_ENABLE_ALARM, "Set <alarm> to state ENABLED");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_ALARM, "Set <alarm> to ON for a short period of time");
         }
 
         private bool HasAlarmWithState(AlarmState alarmState, Dictionary<String, AlarmState> states = null)
@@ -293,7 +182,13 @@ namespace BBAlarmsService
 
         private bool IsAlarmOn(Dictionary<String, AlarmState> states = null)
         {
-            return HasAlarmWithState(AlarmState.ON, states);
+            if (states == null) states = _alarmStates;
+
+            foreach (var state in states.Values)
+            {
+                if (AlarmsMessageSchema.IsAlarmStateOn(state)) return true;
+            }
+            return false;
         }
 
         protected override void HandleADMMessage(ADMMessage message, ArduinoDeviceManager adm)
@@ -307,7 +202,7 @@ namespace BBAlarmsService
                     {
                         bool newState = message.GetBool("State");
                         String msg = String.Format("Alarm {0} on {1}", newState ? "on" : "off", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                        OnAlarmStateChanged(dev.ID, newState ? AlarmState.ON : AlarmState.OFF, msg);
+                        OnAlarmStateChanged(dev.ID, newState ? AlarmState.CRITICAL : AlarmState.OFF, msg);
                         if (message.Tag == 0) return; //i.e. hasn't been specifically requested so do not call base method as this will broadcast (which is not necessary because OnAlarmStateChanged broadcasts)
                     }
                     break;
@@ -316,7 +211,7 @@ namespace BBAlarmsService
                     dev = adm.GetDevice(message.Sender);
                     if (dev.ID.Equals(_buzzer.ID))
                     {
-                        var schema = new MessageSchema(message);
+                        var schema = new AlarmsMessageSchema(message);
                         schema.AddBuzzer(_buzzer);
                     }
                     break;
@@ -367,7 +262,7 @@ namespace BBAlarmsService
             }
 
             //finally we broadcast to any listeners
-            var alert = MessageSchema.AlertAlarmStateChange(deviceID, newState, alarmMessage, _buzzer, _pilot, testing);
+            var alert = AlarmsMessageSchema.AlertAlarmStateChange(deviceID, newState, alarmMessage, testing, _buzzer, _pilot);
             Broadcast(alert);
         }
 
@@ -397,19 +292,19 @@ namespace BBAlarmsService
         override public bool HandleCommand(Connection cnn, Message message, String cmd, List<Object> args, Message response)
         {
             String id; //used for alarm id
-            MessageSchema schema = new MessageSchema(response);
+            AlarmsMessageSchema schema = new AlarmsMessageSchema(response);
             switch (cmd)
             {
-                case MessageSchema.COMMAND_LIST_ALARMS:
+                case AlarmsMessageSchema.COMMAND_LIST_ALARMS:
                     var rows = _asdb.SelectDevices();
                     schema.AddAlarms(rows);
                     return true;
 
-                case MessageSchema.COMMAND_ALARM_STATUS:
+                case AlarmsMessageSchema.COMMAND_ALARM_STATUS:
                     schema.AddAlarmStatus(_alarmStates, _buzzer, _pilot, IsTesting);
                     return true;
 
-                case MessageSchema.COMMAND_SILENCE:
+                case AlarmsMessageSchema.COMMAND_SILENCE:
                     if (ADMS.Count == 0) throw new Exception("No boards connected");
                     int secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 60 * 5;
                     if (IsAlarmOn() && !_buzzer.IsSilenced && secs > 0)
@@ -425,14 +320,14 @@ namespace BBAlarmsService
                         return false;
                     }
 
-                case MessageSchema.COMMAND_UNSILENCE:
+                case AlarmsMessageSchema.COMMAND_UNSILENCE:
                     if (ADMS.Count == 0) throw new Exception("No boards connected");
                     _buzzer.Unsilence();
                     schema.AddBuzzer(_buzzer);
                     message.Value = "Buzzer unsilenced";
                     return true;
 
-                case MessageSchema.COMMAND_DISABLE_ALARM:
+                case AlarmsMessageSchema.COMMAND_DISABLE_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to disable");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
@@ -441,7 +336,7 @@ namespace BBAlarmsService
                     response.Value = String.Format("Alarm {0} disabled", id);
                     return true;
 
-                case MessageSchema.COMMAND_ENABLE_ALARM:
+                case AlarmsMessageSchema.COMMAND_ENABLE_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to enable");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
@@ -450,7 +345,7 @@ namespace BBAlarmsService
                     response.Value = String.Format("Alarm {0} enabled", id);
                     return true;
 
-                case MessageSchema.COMMAND_TEST_ALARM:
+                case AlarmsMessageSchema.COMMAND_TEST_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to test");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
@@ -468,7 +363,7 @@ namespace BBAlarmsService
             switch (message.Type)
             {
                 case MessageType.COMMAND_RESPONSE:
-                    var schema = new MessageSchema(message);
+                    var schema = new AlarmsMessageSchema(message);
                     var remoteStates = schema.GetAlarmStates();
                     if (remoteStates != null)
                     {
@@ -499,11 +394,11 @@ namespace BBAlarmsService
             Message message = new Message(Chetch.Messaging.MessageType.COMMAND);
             foreach (var client in _remoteClients)
             {
-                SendCommand(client, MessageSchema.COMMAND_ALARM_STATUS);
+                SendCommand(client, AlarmsMessageSchema.COMMAND_ALARM_STATUS);
             }
 
             //broadcast current states
-            MessageSchema schema = new MessageSchema(new Message());
+            AlarmsMessageSchema schema = new AlarmsMessageSchema(new Message());
             schema.AddAlarmStatus(_alarmStates, _buzzer, _pilot, IsTesting);
             Broadcast(message);
         }
@@ -517,7 +412,7 @@ namespace BBAlarmsService
             if (_alarmStates[deviceID] != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", deviceID, _alarmStates[deviceID]));
 
             String msg = String.Format("Start alarm test on {0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-            OnAlarmStateChanged(deviceID, AlarmState.ON, msg, "Start alarm test", true);
+            OnAlarmStateChanged(deviceID, AlarmState.CRITICAL, msg, "Start alarm test", true);
 
             //note: these have to be placed after call to state change (see OnStateChange method)
             _testingAlarmID = deviceID;
