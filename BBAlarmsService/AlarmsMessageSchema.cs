@@ -67,8 +67,8 @@ namespace BBAlarmsService
         public void AddAlarmStatus(Dictionary<String, AlarmState> states, Buzzer buzzer, Chetch.Arduino.Devices.Switch pilot, bool testing = false)
         {
             AddAlarmStates(states);
-            AddBuzzer(buzzer);
-            AddPilot(pilot);
+            if(buzzer != null)AddBuzzer(buzzer);
+            if(pilot != null)AddPilot(pilot);
             AddTesting(testing);
         }
 
