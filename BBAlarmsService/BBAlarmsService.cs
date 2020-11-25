@@ -55,8 +55,19 @@ namespace BBAlarmsService
             }
         }
 
-        public const int PILOT_LIGHT_PIN = 3;
-        public const int BUZZER_PIN = 4;
+        enum AlarmTest
+        {
+            NONE,
+            ALARM,
+            BUZZER,
+            PILOT_LIGHT
+        }
+
+        public const int UPDATE_ALARM_STATES_INTERVAL = 30 * 1000;
+
+        public const int USE_ARDUINO_PIN = 7;
+        public const int PILOT_LIGHT_PIN = 6;
+        public const int BUZZER_PIN = 5;
         private AlarmsServiceDB _asdb;
 
         private List<LocalAlarm> _localAlarms = new List<LocalAlarm>();
@@ -71,16 +82,16 @@ namespace BBAlarmsService
         private List<String> _remoteClients = new List<String>();
 
         private String _testingAlarmID = null;
+        private AlarmTest _currentTest = AlarmTest.NONE;
         private System.Timers.Timer _testAlarmTimer = null;
 
-        public bool IsTesting { get { return _testingAlarmID != null; } }
+        public bool IsTesting { get { return _currentTest != AlarmTest.NONE; } }
 
-        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") //  
+        public BBAlarmsService() : base("BBlarms", null, "ADMTestService", null) //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") //  
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
-            RequiredBoards = "ALM1";
+            RequiredBoards = "9";
             AddAllowedPorts(Properties.Settings.Default.AllowedPorts);
-            MaxPingResponseTime = 20;
             try
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connecting to Alarms database...");
@@ -118,13 +129,16 @@ namespace BBAlarmsService
                     _alarmMessages[deviceID] = null;
                 }
 
+
+                ADMInactivityTimeout = 2 * UPDATE_ALARM_STATES_INTERVAL;
+
                 _updateAlarmStatesTimer = new System.Timers.Timer();
                 _updateAlarmStatesTimer.Interval = 30 * 1000;
                 _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(UpdateAlarmStates);
 
                 _testAlarmTimer = new System.Timers.Timer();
                 _testAlarmTimer.Interval = 5 * 1000;
-                _testAlarmTimer.Elapsed += new System.Timers.ElapsedEventHandler(EndAlarmTest);
+                _testAlarmTimer.Elapsed += new System.Timers.ElapsedEventHandler(EndTest);
             }
             catch (Exception e)
             {
@@ -167,6 +181,8 @@ namespace BBAlarmsService
             AddCommandHelp(AlarmsMessageSchema.COMMAND_DISABLE_ALARM, "Set <alarm> to State DISABLED");
             AddCommandHelp(AlarmsMessageSchema.COMMAND_ENABLE_ALARM, "Set <alarm> to state ENABLED");
             AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_ALARM, "Set <alarm> to ON for a short period of time");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_BUZZER, "Sound buzzer for a short period of time");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT, "Turn on pilot light for a short period of time");
         }
 
         private bool HasAlarmWithState(AlarmState alarmState, Dictionary<String, AlarmState> states = null)
@@ -231,7 +247,7 @@ namespace BBAlarmsService
             //if this is called while testing then we end the test as his takes priority
             if (IsTesting)
             {
-                EndAlarmTest(String.Format("Ending test because {0} changed state to {1}", deviceID, newState), null);
+                EndTest(String.Format("Ending test because {0} changed state to {1}", deviceID, newState), null);
             }
 
             //keep track of the new state in a ID to state map
@@ -355,8 +371,14 @@ namespace BBAlarmsService
                     if (args.Count == 0) throw new Exception("No alarm specified to test");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
-                    StartAlarmTest(id);
+                    StartTest(AlarmTest.ALARM, id);
                     response.Value = String.Format("Testing alarm {0}", id);
+                    return true;
+
+                case AlarmsMessageSchema.COMMAND_TEST_BUZZER:
+                    return true;
+
+                case AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT:
                     return true;
 
                 default:
@@ -403,6 +425,18 @@ namespace BBAlarmsService
                 SendCommand(client, AlarmsMessageSchema.COMMAND_ALARM_STATUS);
             }
 
+            //request local states
+            foreach(LocalAlarm la in _localAlarms)
+            {
+                la.AlarmSwitch.RequestState();
+            }
+
+            System.Threading.Thread.Sleep(500); //allow for states to update (kind of loose here...)
+
+            //ping the board so it doesn't reach inactivity timeout
+            var adm = GetADM(null); //assume only one board
+            if (adm != null) adm.Ping();
+
             //broadcast current states
             AlarmsMessageSchema schema = new AlarmsMessageSchema(new Message());
             schema.AddAlarmStatus(_alarmStates, _buzzer, _pilot, IsTesting);
@@ -410,41 +444,70 @@ namespace BBAlarmsService
         }
 
         //testing
-        private void StartAlarmTest(String deviceID)
+        private void StartTest(AlarmTest test, String deviceID)
         {
-            if (IsTesting) throw new Exception(String.Format("Cannot test alarm {0} as already testing {1}", deviceID, _testingAlarmID));
-            if (!_alarmStates.ContainsKey(deviceID)) throw new Exception(String.Format("No alarm found with id {0}", deviceID));
+            if (IsTesting) throw new Exception(String.Format("Cannot run test already testing {0}", _currentTest));
             if (IsAlarmOn()) throw new Exception("Cannot test any alarm while an alarm is already on");
-            if (_alarmStates[deviceID] != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", deviceID, _alarmStates[deviceID]));
 
-            var rand = new Random();
-            Array values = Enum.GetValues(typeof(AlarmState));
-            AlarmState alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
+            switch (test)
+            {
+                case AlarmTest.ALARM:
+                    if (!_alarmStates.ContainsKey(deviceID)) throw new Exception(String.Format("No alarm found with id {0}", deviceID));
+                    if (_alarmStates[deviceID] != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", deviceID, _alarmStates[deviceID]));
+
+                    _testingAlarmID = deviceID;
+
+                    var rand = new Random();
+                    Array values = Enum.GetValues(typeof(AlarmState));
+                    AlarmState alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
+
+                    String msg = String.Format("Start alarm test on {0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                    OnAlarmStateChanged(deviceID, alarmState, msg, "Start alarm test", true);
+                    break;
+
+                case AlarmTest.BUZZER:
+                    _buzzer.On();
+                    break;
+
+                case AlarmTest.PILOT_LIGHT:
+                    _pilot.On();
+                    break;
+            }
             
-            String msg = String.Format("Start alarm test on {0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-            OnAlarmStateChanged(deviceID, alarmState, msg, "Start alarm test", true);
-
             //note: these have to be placed after call to state change (see OnStateChange method)
-            _testingAlarmID = deviceID;
+            _currentTest = test;
             _testAlarmTimer.Start();
         }
 
-        private void EndAlarmTest(Object sender, System.Timers.ElapsedEventArgs ea)
+        private void EndTest(Object sender, System.Timers.ElapsedEventArgs ea)
         {
             _testAlarmTimer.Stop();
-            var deviceID = _testingAlarmID;
-            _testingAlarmID = null;
+            switch (_currentTest)
+            {
+                case AlarmTest.ALARM:
+                    var deviceID = _testingAlarmID;
+                    _testingAlarmID = null;
+                    String logMsg;
+                    if (sender is String)
+                    {
+                        logMsg = sender.ToString();
+                    }
+                    else
+                    {
+                        logMsg = "End alarm test after timeout";
+                    }
+                    OnAlarmStateChanged(deviceID, AlarmState.OFF, null, logMsg, true);
+                    break;
 
-            String logMsg;
-            if (sender is String)
-            {
-                logMsg = sender.ToString();
+                case AlarmTest.BUZZER:
+                    _buzzer.Off();
+                    break;
+
+                case AlarmTest.PILOT_LIGHT:
+                    _pilot.Off();
+                    break;
             }
-            else
-            {
-                logMsg = "End alarm test after timeout";
-            }
-            OnAlarmStateChanged(deviceID, AlarmState.OFF, null, logMsg, true);
+            _currentTest = AlarmTest.NONE;
         }
     } //end class
 }
