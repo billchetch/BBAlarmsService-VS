@@ -75,6 +75,7 @@ namespace BBAlarmsService
         private Dictionary<String, AlarmState> _alarmStates = new Dictionary<String, AlarmState>();
         private Dictionary<String, String> _alarmMessages = new Dictionary<String, String>();
 
+        private Chetch.Arduino.Devices.Switch _useArduino;
         private Chetch.Arduino.Devices.Switch _pilot;
         private Buzzer _buzzer;
 
@@ -137,7 +138,6 @@ namespace BBAlarmsService
                 _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(UpdateAlarmStates);
 
                 _testAlarmTimer = new System.Timers.Timer();
-                _testAlarmTimer.Interval = 5 * 1000;
                 _testAlarmTimer.Elapsed += new System.Timers.ElapsedEventHandler(EndTest);
             }
             catch (Exception e)
@@ -149,6 +149,10 @@ namespace BBAlarmsService
 
         protected override void AddADMDevices(ArduinoDeviceManager adm, ADMMessage message)
         {
+            _useArduino = new Chetch.Arduino.Devices.Switch(USE_ARDUINO_PIN);
+            adm.AddDevice(_useArduino);
+            _useArduino.On();
+
             _pilot = new Chetch.Arduino.Devices.Switch(PILOT_LIGHT_PIN);
             adm.AddDevice(_pilot);
 
@@ -376,12 +380,12 @@ namespace BBAlarmsService
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_BUZZER:
-                    StartTest(AlarmTest.BUZZER, null);
+                    StartTest(AlarmTest.BUZZER, null, 30);
                     response.Value = "Testing buzzer";
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT:
-                    StartTest(AlarmTest.PILOT_LIGHT, null);
+                    StartTest(AlarmTest.PILOT_LIGHT, null, 30);
                     response.Value = "Testing pilot light";
                     return true;
 
@@ -448,7 +452,7 @@ namespace BBAlarmsService
         }
 
         //testing
-        private void StartTest(AlarmTest test, String deviceID)
+        private void StartTest(AlarmTest test, String deviceID, int testSecs = 5)
         {
             if (IsTesting) throw new Exception(String.Format("Cannot run test already testing {0}", _currentTest));
             if (IsAlarmOn()) throw new Exception("Cannot test any alarm while an alarm is already on");
@@ -480,6 +484,7 @@ namespace BBAlarmsService
             
             //note: these have to be placed after call to state change (see OnStateChange method)
             _currentTest = test;
+            _testAlarmTimer.Interval = testSecs * 1000;
             _testAlarmTimer.Start();
         }
 
