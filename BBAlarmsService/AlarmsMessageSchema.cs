@@ -31,6 +31,7 @@ namespace BBAlarmsService
         public const String COMMAND_TEST_ALARM = "test-alarm";
         public const String COMMAND_TEST_BUZZER = "test-buzzer";
         public const String COMMAND_TEST_PILOT_LIGHT = "test-pilot";
+        public const String COMMAND_END_TEST = "end-test";
 
         //this is for this service to broadcast to listeners
         static public Message AlertAlarmStateChange(String deviceID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)

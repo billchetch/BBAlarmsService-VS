@@ -174,6 +174,13 @@ namespace BBAlarmsService
             _updateAlarmStatesTimer.Start();
         }
 
+        protected override void OnStop()
+        {
+            if (_useArduino != null) _useArduino.Off();
+
+            base.OnStop();
+        }
+
         public override void AddCommandHelp()
         {
             base.AddCommandHelp();
@@ -187,6 +194,7 @@ namespace BBAlarmsService
             AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_ALARM, "Set <alarm> to ON for a short period of time");
             AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_BUZZER, "Sound buzzer for a short period of time");
             AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT, "Turn on pilot light for a short period of time");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_END_TEST, "End current test");
         }
 
         private bool HasAlarmWithState(AlarmState alarmState, Dictionary<String, AlarmState> states = null)
@@ -318,6 +326,7 @@ namespace BBAlarmsService
         override public bool HandleCommand(Connection cnn, Message message, String cmd, List<Object> args, Message response)
         {
             String id; //used for alarm id
+            int secs; //used for duration e.g. testing
             AlarmsMessageSchema schema = new AlarmsMessageSchema(response);
             switch (cmd)
             {
@@ -332,7 +341,7 @@ namespace BBAlarmsService
 
                 case AlarmsMessageSchema.COMMAND_SILENCE:
                     if (ADMS.Count == 0) throw new Exception("No boards connected");
-                    int secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 60 * 5;
+                    secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 60 * 5;
                     if (IsAlarmOn() && !_buzzer.IsSilenced && secs > 0)
                     {
                         _buzzer.Silence(secs * 1000);
@@ -375,18 +384,26 @@ namespace BBAlarmsService
                     if (args.Count == 0) throw new Exception("No alarm specified to test");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
-                    StartTest(AlarmTest.ALARM, id);
-                    response.Value = String.Format("Testing alarm {0}", id);
+                    secs = args.Count > 1 ? System.Convert.ToInt16(args[1]) : 5;
+                    StartTest(AlarmTest.ALARM, id, secs);
+                    response.Value = String.Format("Testing alarm {0} for {1} secs", id, secs);
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_BUZZER:
-                    StartTest(AlarmTest.BUZZER, null, 30);
-                    response.Value = "Testing buzzer";
+                    secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 5;
+                    StartTest(AlarmTest.BUZZER, null, secs);
+                    response.Value = String.Format("Testing buzzer for {0} secs", secs);
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT:
-                    StartTest(AlarmTest.PILOT_LIGHT, null, 30);
-                    response.Value = "Testing pilot light";
+                    secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 5;
+                    StartTest(AlarmTest.PILOT_LIGHT, null, secs);
+                    response.Value = String.Format("Testing pilot for {0} secs", secs);
+                    return true;
+
+                case AlarmsMessageSchema.COMMAND_END_TEST:
+                    EndTest(null, null);
+                    response.Value = "Ending current test";
                     return true;
 
                 default:
@@ -497,7 +514,7 @@ namespace BBAlarmsService
                     var deviceID = _testingAlarmID;
                     _testingAlarmID = null;
                     String logMsg;
-                    if (sender is String)
+                    if (sender is String && sender != null)
                     {
                         logMsg = sender.ToString();
                     }
