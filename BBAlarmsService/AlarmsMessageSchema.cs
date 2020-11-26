@@ -29,7 +29,7 @@ namespace BBAlarmsService
         public const String COMMAND_DISABLE_ALARM = "disable-alarm";
         public const String COMMAND_ENABLE_ALARM = "enable-alarm";
         public const String COMMAND_TEST_ALARM = "test-alarm";
-        public const String COMMAND_TEST_BUZZER = "test-buzer";
+        public const String COMMAND_TEST_BUZZER = "test-buzzer";
         public const String COMMAND_TEST_PILOT_LIGHT = "test-pilot";
 
         //this is for this service to broadcast to listeners

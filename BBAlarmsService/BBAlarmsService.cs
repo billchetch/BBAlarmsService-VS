@@ -376,9 +376,13 @@ namespace BBAlarmsService
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_BUZZER:
+                    StartTest(AlarmTest.BUZZER, null);
+                    response.Value = "Testing buzzer";
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT:
+                    StartTest(AlarmTest.PILOT_LIGHT, null);
+                    response.Value = "Testing pilot light";
                     return true;
 
                 default:
