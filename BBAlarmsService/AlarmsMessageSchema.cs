@@ -53,9 +53,9 @@ namespace BBAlarmsService
         }
 
         //this is for this service to broadcast to listeners
-        static public Message RaiseAlarm(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
+        static public bool RaiseAlarm(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
         {
-            if (_raisedAlarms.ContainsKey(alarmID) && _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") == alarmState) return null;
+            bool alreadyRaised = (_raisedAlarms.ContainsKey(alarmID) && _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") == alarmState);
             Message msg = null;
             try {
                 msg = AlertAlarmStateChange(alertingService, alarmID, alarmState, alarmMessage, testing, buzzer, pilot);
@@ -65,13 +65,13 @@ namespace BBAlarmsService
             {
 
             }
-            return msg;
+            return !alreadyRaised;
         }
 
         
-        public static Message LowerAlarm(ADMService alertingService, String alarmID, AlarmState alarmState = AlarmState.OFF, String alarmMessage = null, bool testing = false)
+        public static bool LowerAlarm(ADMService alertingService, String alarmID, AlarmState alarmState = AlarmState.OFF, String alarmMessage = null, bool testing = false)
         {
-            if (!_raisedAlarms.ContainsKey(alarmID) || _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") <= AlarmState.OFF) return null;
+            bool alreadyLowered = (!_raisedAlarms.ContainsKey(alarmID) || _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") <= AlarmState.OFF);
 
             Message msg = null;
             try
@@ -83,7 +83,7 @@ namespace BBAlarmsService
 
             }
 
-            return msg;
+            return !alreadyLowered;
         }
 
 

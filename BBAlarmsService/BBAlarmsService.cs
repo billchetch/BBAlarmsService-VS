@@ -137,7 +137,7 @@ namespace BBAlarmsService
                 ADMInactivityTimeout = 2 * UPDATE_ALARM_STATES_INTERVAL;
 
                 _updateAlarmStatesTimer = new System.Timers.Timer();
-                _updateAlarmStatesTimer.Interval = 30 * 1000;
+                _updateAlarmStatesTimer.Interval = UPDATE_ALARM_STATES_INTERVAL;
                 _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(UpdateAlarmStates);
 
                 _testAlarmTimer = new System.Timers.Timer();
