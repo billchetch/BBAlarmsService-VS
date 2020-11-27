@@ -33,13 +33,13 @@ namespace BBAlarmsService
         public const String COMMAND_TEST_PILOT_LIGHT = "test-pilot";
         public const String COMMAND_END_TEST = "end-test";
 
-        static private List<String> _raisedAlerts = new List<String>();
+        static private Dictionary<String, AlarmState> _raisedAlerts = new Dictionary<String, AlarmState>();
 
         //this is for this service to broadcast to listeners
         static public Message RaiseAlert(ADMService alertingService, String alertID, String deviceID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
         {
 
-            if (_raisedAlerts.Contains(alertID)) return null;
+            if (_raisedAlerts.ContainsKey(alertID) && _raisedAlerts[alertID] == alarmState) return null;
 
             Message msg = new Message(MessageType.ALERT);
             msg.AddValue(ADMService.MessageSchema.DEVICE_ID, deviceID);
@@ -54,7 +54,7 @@ namespace BBAlarmsService
             try
             {
                 alertingService.Broadcast(msg);
-                _raisedAlerts.Add(alertID);
+                _raisedAlerts[alertID] = alarmState;
             }
             catch (Exception)
             {
@@ -70,7 +70,7 @@ namespace BBAlarmsService
 
         public static Message LowerAlert(ADMService alertingService, String alertID, String deviceID, AlarmState alarmState = AlarmState.OFF, String alarmMessage = null, bool testing = false)
         {
-            if (!_raisedAlerts.Contains(alertID)) return null;
+            if (!_raisedAlerts.ContainsKey(alertID)) return null;
 
             Message msg = new Message(MessageType.ALERT);
             msg.AddValue(ADMService.MessageSchema.DEVICE_ID, deviceID);
