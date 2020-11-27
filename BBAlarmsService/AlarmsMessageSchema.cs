@@ -33,28 +33,33 @@ namespace BBAlarmsService
         public const String COMMAND_TEST_PILOT_LIGHT = "test-pilot";
         public const String COMMAND_END_TEST = "end-test";
 
-        static private Dictionary<String, AlarmState> _raisedAlerts = new Dictionary<String, AlarmState>();
+        static private Dictionary<String, Message> _raisedAlarms = new Dictionary<String, Message>();
 
-        //this is for this service to broadcast to listeners
-        static public Message RaiseAlert(ADMService alertingService, String alertID, String deviceID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
+
+        static public Message AlertAlarmStateChange(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
         {
-
-            if (_raisedAlerts.ContainsKey(alertID) && _raisedAlerts[alertID] == alarmState) return null;
-
             Message msg = new Message(MessageType.ALERT);
-            msg.AddValue(ADMService.MessageSchema.DEVICE_ID, deviceID);
+            msg.AddValue("AlarmID", alarmID);
             msg.AddValue("AlarmState", alarmState);
             msg.AddValue("AlarmMessage", alarmMessage);
             msg.AddValue("Testing", testing);
 
             var schema = new AlarmsMessageSchema(msg);
-            if(buzzer != null)schema.AddBuzzer(buzzer);
-            if(pilot != null)schema.AddPilot(pilot);
+            if (buzzer != null) schema.AddBuzzer(buzzer);
+            if (pilot != null) schema.AddPilot(pilot);
 
-            try
-            {
-                alertingService.Broadcast(msg);
-                _raisedAlerts[alertID] = alarmState;
+            alertingService?.Broadcast(msg);
+            return msg;
+        }
+
+        //this is for this service to broadcast to listeners
+        static public Message RaiseAlarm(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
+        {
+            if (_raisedAlarms.ContainsKey(alarmID) && _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") == alarmState) return null;
+            Message msg = null;
+            try {
+                msg = AlertAlarmStateChange(alertingService, alarmID, alarmState, alarmMessage, testing, buzzer, pilot);
+                _raisedAlarms[alarmID] = msg;
             }
             catch (Exception)
             {
@@ -63,25 +68,16 @@ namespace BBAlarmsService
             return msg;
         }
 
-        static public Message RaiseAlert(ADMService alertingService, String deviceID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
+        
+        public static Message LowerAlarm(ADMService alertingService, String alarmID, AlarmState alarmState = AlarmState.OFF, String alarmMessage = null, bool testing = false)
         {
-            return RaiseAlert(alertingService, deviceID, deviceID, alarmState, alarmMessage, testing, buzzer, pilot);
-        }
+            if (!_raisedAlarms.ContainsKey(alarmID) || _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") <= AlarmState.OFF) return null;
 
-        public static Message LowerAlert(ADMService alertingService, String alertID, String deviceID, AlarmState alarmState = AlarmState.OFF, String alarmMessage = null, bool testing = false)
-        {
-            if (!_raisedAlerts.ContainsKey(alertID)) return null;
-
-            Message msg = new Message(MessageType.ALERT);
-            msg.AddValue(ADMService.MessageSchema.DEVICE_ID, deviceID);
-            msg.AddValue("AlarmState", alarmState);
-            msg.AddValue("AlarmMessage", alarmMessage);
-            msg.AddValue("Testing", testing);
-
+            Message msg = null;
             try
             {
-                alertingService.Broadcast(msg);
-                _raisedAlerts.Remove(alertID);
+                msg = AlertAlarmStateChange(alertingService, alarmID, alarmState, alarmMessage, testing);
+                _raisedAlarms[alarmID] = msg;
             } catch (Exception)
             {
 
@@ -90,10 +86,6 @@ namespace BBAlarmsService
             return msg;
         }
 
-        public static Message LowerAlert(ADMService alertingService, String deviceID, AlarmState alarmState = AlarmState.OFF, String alarmMessage = null, bool testing = false)
-        {
-            return LowerAlert(alertingService, deviceID, deviceID, alarmState, alarmMessage, testing);
-        }
 
         static public bool IsAlarmStateOn(AlarmState state)
         {

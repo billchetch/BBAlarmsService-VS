@@ -13,6 +13,7 @@ namespace BBAlarmsService
     {
         class LocalAlarm
         {
+            public String AlarmID { get { return AlarmSwitch.ID; } }
             public String AlarmName { get; internal set; }
             public SwitchSensor AlarmSwitch { get; internal set; }
             
@@ -23,8 +24,9 @@ namespace BBAlarmsService
             }
         }
 
-        class RemoteAlarm : ArduinoDeviceMessageFilter
+        class RemoteAlarm : MessageFilter
         {
+            public String AlarmID { get; internal set; }
             public String AlarmName { get; internal set; }
             public AlarmState AlarmState { get; internal set; } = AlarmState.OFF;
             public String AlarmMessage { get; internal set; }
@@ -34,8 +36,9 @@ namespace BBAlarmsService
 
             private AlarmsMessageSchema _schema = new AlarmsMessageSchema();
 
-            public RemoteAlarm(String deviceID, String alarmName, String clientName) : base(deviceID, clientName, Chetch.Messaging.MessageType.ALERT)
+            public RemoteAlarm(String alarmID, String alarmName, String clientName) : base(clientName, Chetch.Messaging.MessageType.ALERT, "AlarmID", alarmID)
             {
+                AlarmID = alarmID;
                 AlarmName = alarmName;
             }
 
@@ -103,14 +106,14 @@ namespace BBAlarmsService
                 foreach (var row in rows)
                 {
                     String source = row.GetString("alarm_source");
-                    String deviceID = row.GetString("device_id");
+                    String alarmID = row.GetString("alarm_id");
                     String alarmName = row.GetString("alarm_name");
                     if (source == null || source == String.Empty)
                     {
                         //The alarm is local and provided by an ADM input
                         int pin = row.GetInt("pin_number");
                         if (pin == 0) throw new Exception("BBAlarmsService: Cannot have an alarm pin 0");
-                        SwitchSensor ss = new SwitchSensor(pin, row.GetInt("noise_threshold"), deviceID, row.GetString("device_name"));
+                        SwitchSensor ss = new SwitchSensor(pin, row.GetInt("noise_threshold"), alarmID, "ALARM");
                         LocalAlarm la = new LocalAlarm(alarmName, ss);
                         _localAlarms.Add(la);
                         Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} local alarm with device id {1} and device name {2} for pin {3}", row["alarm_name"], ss.ID, ss.Name, pin);
@@ -118,16 +121,16 @@ namespace BBAlarmsService
                     else
                     {
                         //The alarm is remote so we need to subscribe to the remote service and listen
-                        RemoteAlarm ra = new RemoteAlarm(deviceID, alarmName, source);
+                        RemoteAlarm ra = new RemoteAlarm(alarmID, alarmName, source);
                         ra.HandleMatched += HandleRemoteAlarmMessage;
                         _remoteAlarms.Add(ra);
                         Subscribe(ra);
-                        Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} alarm @ {1} with id {2}", ra.AlarmName, source, deviceID);
+                        Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} alarm @ {1} with id {2}", ra.AlarmName, source, alarmID);
 
                         if (!_remoteClients.Contains(source)) _remoteClients.Add(source);
                     }
-                    _alarmStates[deviceID] = AlarmState.OFF;
-                    _alarmMessages[deviceID] = null;
+                    _alarmStates[alarmID] = AlarmState.OFF;
+                    _alarmMessages[alarmID] = null;
                 }
 
 
@@ -229,7 +232,7 @@ namespace BBAlarmsService
                     if (dev != null && _alarmStates.ContainsKey(dev.ID) && message.HasValue("State"))
                     {
                         bool newState = message.GetBool("State");
-                        String msg = String.Format("Alarm {0} on {1}", newState ? "on" : "off", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                        String msg = String.Format("Alarm {0} {1} @ {2}", dev.ID, newState ? "on" : "off", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                         OnAlarmStateChanged(dev.ID, newState ? AlarmState.CRITICAL : AlarmState.OFF, msg);
                         if (message.Tag == 0) return; //i.e. hasn't been specifically requested so do not call base method as this will broadcast (which is not necessary because OnAlarmStateChanged broadcasts)
                     }
@@ -251,26 +254,26 @@ namespace BBAlarmsService
         private void HandleRemoteAlarmMessage(MessageFilter remote, Message message)
         {
             RemoteAlarm a = (RemoteAlarm)remote;
-            OnAlarmStateChanged(a.DeviceID, a.AlarmState, a.AlarmMessage);
+            OnAlarmStateChanged(a.AlarmID, a.AlarmState, a.AlarmMessage);
         }
 
-        private void OnAlarmStateChanged(String deviceID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
+        private void OnAlarmStateChanged(String alarmID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
         {
             //if this is called while testing then we end the test as his takes priority
             if (IsTesting)
             {
-                EndTest(String.Format("Ending test because {0} changed state to {1}", deviceID, newState), null);
+                EndTest(String.Format("Ending test because {0} changed state to {1}", alarmID, newState), null);
             }
 
             //keep track of the new state in a ID to state map
-            _alarmStates[deviceID] = newState;
-            _alarmMessages[deviceID] = alarmMessage;
+            _alarmStates[alarmID] = newState;
+            _alarmMessages[alarmID] = alarmMessage;
 
             //a state change has occurred so we log it
             try
             {
                 //Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm device {0} change of state to {1}", deviceID, newState);
-                _asdb.LogStateChange(deviceID, newState, alarmMessage, comments);
+                _asdb.LogStateChange(alarmID, newState, alarmMessage, comments);
             }
             catch (Exception e)
             {
@@ -296,8 +299,7 @@ namespace BBAlarmsService
             }
 
             //finally we broadcast to any listeners
-            var alert = AlarmsMessageSchema.AlertAlarmStateChange(deviceID, newState, alarmMessage, testing, _buzzer, _pilot);
-            Broadcast(alert);
+            AlarmsMessageSchema.AlertAlarmStateChange(this, alarmID, newState, alarmMessage, testing, _buzzer, _pilot);
         }
 
         private void EnableAlarm(String id, bool enable)
@@ -315,7 +317,7 @@ namespace BBAlarmsService
             //search remote alarms
             foreach (var a in _remoteAlarms)
             {
-                if (a.DeviceID.Equals(id))
+                if (a.AlarmID.Equals(id))
                 {
                     a.Enable(enable);
                     return;
@@ -411,36 +413,6 @@ namespace BBAlarmsService
             }
         }
 
-        public override void HandleClientMessage(Connection cnn, Message message)
-        {
-            switch (message.Type)
-            {
-                case MessageType.COMMAND_RESPONSE:
-                    var schema = new AlarmsMessageSchema(message);
-                    var remoteStates = schema.GetAlarmStates();
-                    if (remoteStates != null)
-                    {
-                        foreach (var kv in remoteStates)
-                        {
-                            if (_alarmStates.ContainsKey(kv.Key) && _alarmStates[kv.Key] != kv.Value)
-                            {
-                                //A remote alarm has a different state from the one that we have recorded in this service
-                                //so we take the remote state as authority and upcate accordingly
-                                String msg = String.Format("Alarm {0} has state {1} but remote state {2} so updating locally", kv.Key, _alarmStates[kv.Key], kv.Value);
-                                Tracing?.TraceEvent(TraceEventType.Warning, 2000, msg);
-                                OnAlarmStateChanged(kv.Key, kv.Value, msg);
-                            }
-                        }
-                    }
-
-                    break;
-
-                case MessageType.ALERT:
-                    break;
-            }
-            base.HandleClientMessage(cnn, message);
-        }
-
         private void UpdateAlarmStates(Object sender, System.Timers.ElapsedEventArgs ea)
         {
             //request remote alarm states
@@ -511,7 +483,7 @@ namespace BBAlarmsService
             switch (_currentTest)
             {
                 case AlarmTest.ALARM:
-                    var deviceID = _testingAlarmID;
+                    var alarmID = _testingAlarmID;
                     _testingAlarmID = null;
                     String logMsg;
                     if (sender is String && sender != null)
@@ -522,7 +494,7 @@ namespace BBAlarmsService
                     {
                         logMsg = "End alarm test after timeout";
                     }
-                    OnAlarmStateChanged(deviceID, AlarmState.OFF, null, logMsg, true);
+                    OnAlarmStateChanged(alarmID, AlarmState.OFF, null, logMsg, true);
                     break;
 
                 case AlarmTest.BUZZER:
