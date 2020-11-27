@@ -12,12 +12,12 @@ namespace BBAlarmsService
 {
     public enum AlarmState
     {
+        DISABLED,
         OFF,
-        CRITICAL,
-        SEVERE,
-        MODERATE,
         MINOR,
-        DISABLED
+        MODERATE,
+        SEVERE,
+        CRITICAL,
     }
 
     public class AlarmsMessageSchema : ADMService.MessageSchema
