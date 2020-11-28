@@ -41,7 +41,7 @@ namespace BBAlarmsService
             Message msg = new Message(MessageType.ALERT);
             msg.AddValue("AlarmID", alarmID);
             msg.AddValue("AlarmState", alarmState);
-            msg.AddValue("AlarmMessage", alarmMessage);
+            msg.AddValue("AlarmMessage", alarmMessage == null ? "n/a" : alarmMessage);
             msg.AddValue("Testing", testing);
 
             var schema = new AlarmsMessageSchema(msg);
