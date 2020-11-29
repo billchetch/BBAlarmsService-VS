@@ -299,7 +299,8 @@ namespace BBAlarmsService
             }
 
             //finally we broadcast to any listeners
-            AlarmsMessageSchema.AlertAlarmStateChange(this, alarmID, newState, alarmMessage, testing, _buzzer, _pilot);
+            Message alert = AlarmsMessageSchema.AlertAlarmStateChange(alarmID, newState, alarmMessage, testing, _buzzer, _pilot);
+            Broadcast(alert);
         }
 
         private void EnableAlarm(String id, bool enable)

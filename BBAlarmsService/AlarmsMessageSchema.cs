@@ -36,7 +36,7 @@ namespace BBAlarmsService
         static private Dictionary<String, Message> _raisedAlarms = new Dictionary<String, Message>();
 
 
-        static public Message AlertAlarmStateChange(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
+        static public Message AlertAlarmStateChange(String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
         {
             Message msg = new Message(MessageType.ALERT);
             msg.AddValue("AlarmID", alarmID);
@@ -48,7 +48,6 @@ namespace BBAlarmsService
             if (buzzer != null) schema.AddBuzzer(buzzer);
             if (pilot != null) schema.AddPilot(pilot);
 
-            alertingService?.Broadcast(msg);
             return msg;
         }
 
@@ -58,7 +57,8 @@ namespace BBAlarmsService
             bool alreadyRaised = (_raisedAlarms.ContainsKey(alarmID) && _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") == alarmState);
             Message msg = null;
             try {
-                msg = AlertAlarmStateChange(alertingService, alarmID, alarmState, alarmMessage, testing, buzzer, pilot);
+                msg = AlertAlarmStateChange(alarmID, alarmState, alarmMessage, testing, buzzer, pilot);
+                alertingService?.Broadcast(msg);
                 _raisedAlarms[alarmID] = msg;
             }
             catch (Exception)
@@ -76,7 +76,8 @@ namespace BBAlarmsService
             Message msg = null;
             try
             {
-                msg = AlertAlarmStateChange(alertingService, alarmID, alarmState, alarmMessage, testing);
+                msg = AlertAlarmStateChange(alarmID, alarmState, alarmMessage, testing);
+                alertingService?.Broadcast(msg);
                 _raisedAlarms[alarmID] = msg;
             } catch (Exception)
             {
