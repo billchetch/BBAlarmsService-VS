@@ -32,6 +32,8 @@ namespace BBAlarmsService
         public const String COMMAND_TEST_BUZZER = "test-buzzer";
         public const String COMMAND_TEST_PILOT_LIGHT = "test-pilot";
         public const String COMMAND_END_TEST = "end-test";
+        public const String COMMAND_RAISE_ALARM = "raise-alarm";
+        public const String COMMAND_LOWER_ALARM = "lower-alarm";
 
         static private Dictionary<String, Message> _raisedAlarms = new Dictionary<String, Message>();
 
