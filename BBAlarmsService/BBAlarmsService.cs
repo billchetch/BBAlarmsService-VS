@@ -125,7 +125,7 @@ namespace BBAlarmsService
                         ra.HandleMatched += HandleRemoteAlarmMessage;
                         _remoteAlarms.Add(ra);
                         Subscribe(ra);
-                        Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} alarm @ {1} with id {2}", ra.AlarmName, source, alarmID);
+                        Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} remote alarm @ {1} with id {2}", ra.AlarmName, source, alarmID);
 
                         if (!_remoteClients.Contains(source)) _remoteClients.Add(source);
                     }

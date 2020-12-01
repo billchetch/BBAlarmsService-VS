@@ -28,27 +28,27 @@ namespace BBAlarmsService
             // - Alarm
             fields = "a.*";
             from = "alarms a";
-            filter = "device_id='{0}'";
+            filter = "alarm_id='{0}'";
             this.AddSelectStatement("alarm", fields, from, filter, null, null);
 
             //Init base
             base.Initialize();
         }
 
-        public List<DBRow> SelectDevices()
+        public List<DBRow> SelectAlarms()
         {
             return Select("alarms", "*", "1");
         }
 
-        public DBRow SelectDevice(String deviceID)
+        public DBRow SelectAlarm (String alarmID)
         {
-            return SelectRow("alarm", "*", deviceID);
+            return SelectRow("alarm", "*", alarmID);
         }
 
-        public long LogStateChange(String deviceID, AlarmState newState, String alarmMessage = null, String comments = null)
+        public long LogStateChange(String alarmID, AlarmState newState, String alarmMessage = null, String comments = null)
         {
-            var row = SelectDevice(deviceID);
-            if (row == null) throw new Exception("No device found with ID " + deviceID);
+            var row = SelectAlarm(alarmID);
+            if (row == null) throw new Exception("No alarm found with ID " + alarmID);
 
             var newRow = new DBRow();
             newRow["alarm_state"] = newState.ToString();
