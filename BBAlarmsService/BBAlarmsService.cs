@@ -91,7 +91,7 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _currentTest != AlarmTest.NONE; } }
 
-        public BBAlarmsService() : base("BBlarms", null, "ADMTestService", null) //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", "ADMTestServiceClient", "ADMTestService", "ADMTestServiceLog") //  
+        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBlarms", null, "ADMTestService", null)  
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             RequiredBoards = "9";
@@ -102,7 +102,7 @@ namespace BBAlarmsService
                 _asdb = AlarmsServiceDB.Create(Properties.Settings.Default, "AlarmsDBName");
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connected to Alarms database. Now creating alarms...");
 
-                var rows = _asdb.SelectDevices();
+                var rows = _asdb.SelectAlarms();
                 foreach (var row in rows)
                 {
                     String source = row.GetString("alarm_source");
@@ -334,7 +334,7 @@ namespace BBAlarmsService
             switch (cmd)
             {
                 case AlarmsMessageSchema.COMMAND_LIST_ALARMS:
-                    var rows = _asdb.SelectDevices();
+                    var rows = _asdb.SelectAlarms();
                     schema.AddAlarms(rows);
                     return true;
 
