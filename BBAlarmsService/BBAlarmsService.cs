@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Chetch.Messaging;
+using Chetch.Utilities;
 using System.Diagnostics;
 using Chetch.Arduino;
 using Chetch.Arduino.Devices;
@@ -387,20 +388,21 @@ namespace BBAlarmsService
                     if (args.Count == 0) throw new Exception("No alarm specified to test");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
-                    secs = args.Count > 1 ? System.Convert.ToInt16(args[1]) : 5;
-                    StartTest(AlarmTest.ALARM, id, secs);
+                    AlarmState alarmState = args.Count > 1 ? (AlarmState)System.Convert.ToInt16(args[2]) : AlarmState.OFF;
+                    secs = args.Count > 2 ? System.Convert.ToInt16(args[2]) : 5;
+                    StartTest(AlarmTest.ALARM, id, alarmState, secs);
                     response.Value = String.Format("Testing alarm {0} for {1} secs", id, secs);
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_BUZZER:
                     secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 5;
-                    StartTest(AlarmTest.BUZZER, null, secs);
+                    StartTest(AlarmTest.BUZZER, null, AlarmState.OFF, secs);
                     response.Value = String.Format("Testing buzzer for {0} secs", secs);
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT:
                     secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 5;
-                    StartTest(AlarmTest.PILOT_LIGHT, null, secs);
+                    StartTest(AlarmTest.PILOT_LIGHT, null, AlarmState.OFF, secs);
                     response.Value = String.Format("Testing pilot for {0} secs", secs);
                     return true;
 
@@ -442,7 +444,7 @@ namespace BBAlarmsService
         }
 
         //testing
-        private void StartTest(AlarmTest test, String deviceID, int testSecs = 5)
+        private void StartTest(AlarmTest test, String alarmID, AlarmState alarmState = AlarmState.OFF, int testSecs = 5)
         {
             if (IsTesting) throw new Exception(String.Format("Cannot run test already testing {0}", _currentTest));
             if (IsAlarmOn()) throw new Exception("Cannot test any alarm while an alarm is already on");
@@ -450,17 +452,20 @@ namespace BBAlarmsService
             switch (test)
             {
                 case AlarmTest.ALARM:
-                    if (!_alarmStates.ContainsKey(deviceID)) throw new Exception(String.Format("No alarm found with id {0}", deviceID));
-                    if (_alarmStates[deviceID] != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", deviceID, _alarmStates[deviceID]));
+                    if (!_alarmStates.ContainsKey(alarmID)) throw new Exception(String.Format("No alarm found with id {0}", alarmID));
+                    if (_alarmStates[alarmID] != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", alarmID, _alarmStates[alarmID]));
 
-                    _testingAlarmID = deviceID;
+                    _testingAlarmID = alarmID;
 
-                    var rand = new Random();
-                    Array values = Enum.GetValues(typeof(AlarmState));
-                    AlarmState alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
+                    if (alarmState == AlarmState.OFF)
+                    {
+                        var rand = new Random();
+                        Array values = Enum.GetValues(typeof(AlarmState));
+                        alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
+                    }
 
                     String msg = String.Format("Start alarm test on {0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                    OnAlarmStateChanged(deviceID, alarmState, msg, "Start alarm test", true);
+                    OnAlarmStateChanged(alarmID, alarmState, msg, "Start alarm test", true);
                     break;
 
                 case AlarmTest.BUZZER:
