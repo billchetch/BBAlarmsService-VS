@@ -92,7 +92,7 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _currentTest != AlarmTest.NONE; } }
 
-        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBlarms", null, "ADMTestService", null)  
+        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") //base("BBAlarms", null, "ADMTestService", null)  
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             RequiredBoards = "9";
@@ -297,6 +297,7 @@ namespace BBAlarmsService
             {
                 _pilot.Off();
                 _buzzer.Off();
+                _buzzer.Unsilence();
             }
 
             //finally we broadcast to any listeners
@@ -388,7 +389,7 @@ namespace BBAlarmsService
                     if (args.Count == 0) throw new Exception("No alarm specified to test");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
-                    AlarmState alarmState = args.Count > 1 ? (AlarmState)System.Convert.ToInt16(args[2]) : AlarmState.OFF;
+                    AlarmState alarmState = args.Count > 1 ? (AlarmState)System.Convert.ToInt16(args[1]) : AlarmState.CRITICAL;
                     secs = args.Count > 2 ? System.Convert.ToInt16(args[2]) : 5;
                     StartTest(AlarmTest.ALARM, id, alarmState, secs);
                     response.Value = String.Format("Testing alarm {0} for {1} secs", id, secs);
@@ -486,7 +487,9 @@ namespace BBAlarmsService
         private void EndTest(Object sender, System.Timers.ElapsedEventArgs ea)
         {
             _testAlarmTimer.Stop();
-            switch (_currentTest)
+            AlarmTest atest = _currentTest;
+            _currentTest = AlarmTest.NONE;
+            switch (atest)
             {
                 case AlarmTest.ALARM:
                     var alarmID = _testingAlarmID;
@@ -511,7 +514,6 @@ namespace BBAlarmsService
                     _pilot.Off();
                     break;
             }
-            _currentTest = AlarmTest.NONE;
         }
     } //end class
 }
