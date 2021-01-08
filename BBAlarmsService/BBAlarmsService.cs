@@ -92,7 +92,7 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _currentTest != AlarmTest.NONE; } }
 
-        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") //base("BBAlarms", null, "ADMTestService", null)  
+        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") //base("BBAlarms", null, "ADMTestService", null)  //
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             RequiredBoards = "9";
