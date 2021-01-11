@@ -92,7 +92,7 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _currentTest != AlarmTest.NONE; } }
 
-        public BBAlarmsService() : base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") //base("BBAlarms", null, "ADMTestService", null)  //
+        public BBAlarmsService() :base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", null, "ADMTestService", null)  //
         {
             SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
             RequiredBoards = "9";
@@ -255,7 +255,12 @@ namespace BBAlarmsService
         private void HandleRemoteAlarmMessage(MessageFilter remote, Message message)
         {
             RemoteAlarm a = (RemoteAlarm)remote;
-            OnAlarmStateChanged(a.AlarmID, a.AlarmState, a.AlarmMessage);
+
+            bool isEvent = !_alarmStates.ContainsKey(a.AlarmID) || a.AlarmState != _alarmStates[a.AlarmID];
+            if (isEvent) 
+            {
+                OnAlarmStateChanged(a.AlarmID, a.AlarmState, a.AlarmMessage);
+            }
         }
 
         private void OnAlarmStateChanged(String alarmID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
