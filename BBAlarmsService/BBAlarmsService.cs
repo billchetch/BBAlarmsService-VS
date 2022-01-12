@@ -4,9 +4,9 @@ using System.Linq;
 using Chetch.Messaging;
 using Chetch.Utilities;
 using System.Diagnostics;
-using Chetch.Arduino;
-using Chetch.Arduino.Devices;
-using Chetch.Arduino.Devices.Buzzers;
+using Chetch.Arduino2;
+using Chetch.Arduino2.Devices;
+using Chetch.Arduino2.Devices.Buzzers;
 
 namespace BBAlarmsService
 {
@@ -16,12 +16,12 @@ namespace BBAlarmsService
         {
             public String AlarmID { get { return AlarmSwitch.ID; } }
             public String AlarmName { get; internal set; }
-            public SwitchSensor AlarmSwitch { get; internal set; }
+            public SwitchDevice AlarmSwitch { get; internal set; }
             
-            public LocalAlarm(String alarmName, SwitchSensor alarmSwitch)
+            public LocalAlarm(String alarmName, String alarmID, byte pin, int tolerance)
             {
                 AlarmName = alarmName;
-                AlarmSwitch = alarmSwitch;
+                AlarmSwitch = new SwitchDevice(alarmID, SwitchDevice.SwitchMode.PASSIVE, pin, tolerance);
             }
         }
 
@@ -72,38 +72,36 @@ namespace BBAlarmsService
         public const int USE_ARDUINO_PIN = 7;
         public const int PILOT_LIGHT_PIN = 6;
         public const int BUZZER_PIN = 5;
-        private AlarmsServiceDB _asdb;
+        private AlarmsServiceDB asdb;
 
-        private List<LocalAlarm> _localAlarms = new List<LocalAlarm>();
-        private List<RemoteAlarm> _remoteAlarms = new List<RemoteAlarm>();
-        private Dictionary<String, AlarmState> _alarmStates = new Dictionary<String, AlarmState>();
-        private Dictionary<String, String> _alarmMessages = new Dictionary<String, String>();
+        private List<LocalAlarm> localAlarms = new List<LocalAlarm>();
+        private List<RemoteAlarm> remoteAlarms = new List<RemoteAlarm>();
+        private Dictionary<String, AlarmState> alarmStates = new Dictionary<String, AlarmState>();
+        private Dictionary<String, String> alarmMessages = new Dictionary<String, String>();
 
-        private Chetch.Arduino.Devices.Switch _useArduino;
-        private Chetch.Arduino.Devices.Switch _pilot;
-        private Buzzer _buzzer;
+        private ArduinoDeviceManager adm;
+        private SwitchDevice useArduino;
+        private SwitchDevice pilot;
+        private Buzzer buzzer;
 
-        private System.Timers.Timer _updateAlarmStatesTimer = null; //for remote alarms and also broadcast to clients
-        private List<String> _remoteClients = new List<String>();
+        private System.Timers.Timer updateAlarmStatesTimer = null; //for remote alarms and also broadcast to clients
+        private List<String> remoteClients = new List<String>();
 
-        private String _testingAlarmID = null;
-        private AlarmTest _currentTest = AlarmTest.NONE;
-        private System.Timers.Timer _testAlarmTimer = null;
+        private String testingAlarmID = null;
+        private AlarmTest currentTest = AlarmTest.NONE;
+        private System.Timers.Timer testAlarmTimer = null;
 
-        public bool IsTesting { get { return _currentTest != AlarmTest.NONE; } }
+        public bool IsTesting { get { return currentTest != AlarmTest.NONE; } }
 
-        public BBAlarmsService() :base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog") // base("BBAlarms", null, "ADMTestService", null)  //
+        public BBAlarmsService() : base("BBAlarms", null, "ADMTestService", null)  //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog")
         {
-            SupportedBoards = ArduinoDeviceManager.DEFAULT_BOARD_SET;
-            RequiredBoards = "9";
-            AddAllowedPorts(Properties.Settings.Default.AllowedPorts);
             try
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connecting to Alarms database...");
-                _asdb = AlarmsServiceDB.Create(Properties.Settings.Default, "AlarmsDBName");
+                asdb = AlarmsServiceDB.Create(Properties.Settings.Default, "AlarmsDBName");
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connected to Alarms database. Now creating alarms...");
 
-                var rows = _asdb.SelectAlarms();
+                var rows = asdb.SelectAlarms();
                 foreach (var row in rows)
                 {
                     String source = row.GetString("alarm_source");
@@ -114,9 +112,8 @@ namespace BBAlarmsService
                         //The alarm is local and provided by an ADM input
                         int pin = row.GetInt("pin_number");
                         if (pin == 0) throw new Exception("BBAlarmsService: Cannot have an alarm pin 0");
-                        SwitchSensor ss = new SwitchSensor(pin, row.GetInt("noise_threshold"), alarmID, "ALARM");
-                        LocalAlarm la = new LocalAlarm(alarmName, ss);
-                        _localAlarms.Add(la);
+                        LocalAlarm la = new LocalAlarm(alarmName, alarmID, pin, row.GetInt("noise_threshold"));
+                        localAlarms.Add(la);
                         Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} local alarm with device id {1} and device name {2} for pin {3}", row["alarm_name"], ss.ID, ss.Name, pin);
                     }
                     else
@@ -124,25 +121,42 @@ namespace BBAlarmsService
                         //The alarm is remote so we need to subscribe to the remote service and listen
                         RemoteAlarm ra = new RemoteAlarm(alarmID, alarmName, source);
                         ra.HandleMatched += HandleRemoteAlarmMessage;
-                        _remoteAlarms.Add(ra);
+                        remoteAlarms.Add(ra);
                         Subscribe(ra);
                         Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} remote alarm @ {1} with id {2}", ra.AlarmName, source, alarmID);
 
-                        if (!_remoteClients.Contains(source)) _remoteClients.Add(source);
+                        if (!remoteClients.Contains(source))remoteClients.Add(source);
                     }
-                    _alarmStates[alarmID] = AlarmState.OFF;
-                    _alarmMessages[alarmID] = null;
+                    alarmStates[alarmID] = AlarmState.OFF;
+                    alarmMessages[alarmID] = null;
                 }
 
 
-                ADMInactivityTimeout = 2 * UPDATE_ALARM_STATES_INTERVAL;
+                Tracing?.TraceEvent(TraceEventType.Information, 0, "Alarms created. Now adding ADM and devices...");
+                adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_UNO, 115200, 64, 64);
 
-                _updateAlarmStatesTimer = new System.Timers.Timer();
-                _updateAlarmStatesTimer.Interval = UPDATE_ALARM_STATES_INTERVAL;
-                _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(UpdateAlarmStates);
+                useArduino = new SwitchDevice("useard", SwitchDevice.SwitchMode.ACTIVE, USE_ARDUINO_PIN);
+                adm.AddDevice(useArduino);
+                
+                pilot = new SwitchDevice("pilot", SwitchDevice.SwitchMode.ACTIVE, PILOT_LIGHT_PIN);                
+                adm.AddDevice(pilot);
 
-                _testAlarmTimer = new System.Timers.Timer();
-                _testAlarmTimer.Elapsed += new System.Timers.ElapsedEventHandler(EndTest);
+                buzzer = new Buzzer("buzzer", BUZZER_PIN);
+                adm.AddDevice(buzzer);
+
+                foreach (var a in localAlarms)
+                {
+                    Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding alarm {0} {1} to {2}", a.AlarmSwitch.ID, a.AlarmName, adm.BoardID);
+                    adm.AddDevice(a.AlarmSwitch);
+                }
+                Tracing?.TraceEvent(TraceEventType.Information, 0, "Added {0} devices to {1}", adm.DeviceCount, adm.UID);
+
+                updateAlarmStatesTimer = new System.Timers.Timer();
+                updateAlarmStatesTimer.Interval = UPDATE_ALARM_STATES_INTERVAL;
+                updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(UpdateAlarmStates);
+
+                testAlarmTimer = new System.Timers.Timer();
+                testAlarmTimer.Elapsed += new System.Timers.ElapsedEventHandler(EndTest);
             }
             catch (Exception e)
             {
@@ -151,36 +165,18 @@ namespace BBAlarmsService
             }
         }
 
-        protected override void AddADMDevices(ArduinoDeviceManager adm, ADMMessage message)
-        {
-            _useArduino = new Chetch.Arduino.Devices.Switch(USE_ARDUINO_PIN);
-            adm.AddDevice(_useArduino);
-            _useArduino.On();
-
-            _pilot = new Chetch.Arduino.Devices.Switch(PILOT_LIGHT_PIN);
-            adm.AddDevice(_pilot);
-
-            _buzzer = new Buzzer(BUZZER_PIN);
-            adm.AddDevice(_buzzer);
-
-            foreach (var a in _localAlarms)
-            {
-                Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding alarm {0} {1} to {2}", a.AlarmSwitch.ID, a.AlarmName, adm.BoardID);
-                adm.AddDevice(a.AlarmSwitch);
-            }
-        }
+        
 
         protected override void OnClientConnect(ClientConnection cnn)
         {
             base.OnClientConnect(cnn);
 
-            //TODO: uncomment monitor start
-            _updateAlarmStatesTimer.Start();
+            updateAlarmStatesTimer.Start();
         }
 
         protected override void OnStop()
         {
-            if (_useArduino != null) _useArduino.Off();
+            if (useArduino != null)useArduino.TurnOff();
 
             base.OnStop();
         }
@@ -203,7 +199,7 @@ namespace BBAlarmsService
 
         private bool HasAlarmWithState(AlarmState alarmState, Dictionary<String, AlarmState> states = null)
         {
-            if (states == null) states = _alarmStates;
+            if (states == null) states = alarmStates;
 
             foreach (var state in states.Values)
             {
@@ -214,7 +210,7 @@ namespace BBAlarmsService
 
         private bool IsAlarmOn(Dictionary<String, AlarmState> states = null)
         {
-            if (states == null) states = _alarmStates;
+            if (states == null) states = alarmStates;
 
             foreach (var state in states.Values)
             {
