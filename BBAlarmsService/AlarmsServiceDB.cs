@@ -4,10 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Chetch.Database;
+using Chetch.Arduino2;
 
 namespace BBAlarmsService
 {
-    public class AlarmsServiceDB : DB
+    public class AlarmsServiceDB : ADMServiceDB
     {
         static public AlarmsServiceDB Create(System.Configuration.ApplicationSettingsBase settings, String dbnameKey = null)
         {

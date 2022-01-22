@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Chetch.Arduino;
+using Chetch.Arduino2;
 using Chetch.Messaging;
-using Chetch.Arduino.Devices;
-using Chetch.Arduino.Devices.Buzzers;
+using Chetch.Arduino2.Devices;
+using Chetch.Arduino2.Devices.Buzzers;
 
 namespace BBAlarmsService
 {
@@ -38,7 +38,7 @@ namespace BBAlarmsService
         static private Dictionary<String, Message> _raisedAlarms = new Dictionary<String, Message>();
 
 
-        static public Message AlertAlarmStateChange(String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
+        static public Message AlertAlarmStateChange(String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino2.Devices.SwitchDevice pilot = null)
         {
             Message msg = new Message(MessageType.ALERT);
             msg.AddValue("AlarmID", alarmID);
@@ -54,7 +54,7 @@ namespace BBAlarmsService
         }
 
         //this is for this service to broadcast to listeners
-        static public bool RaiseAlarm(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino.Devices.Switch pilot = null)
+        static public bool RaiseAlarm(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, SwitchDevice pilot = null)
         {
             bool alreadyRaised = (_raisedAlarms.ContainsKey(alarmID) && _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") == alarmState);
             Message msg = null;
@@ -99,6 +99,8 @@ namespace BBAlarmsService
 
         public AlarmsMessageSchema(Message message) : base(message) { }
 
+        public AlarmsMessageSchema(MessageType messageType) : base(messageType) { }
+
         public void AddAlarms(List<Chetch.Database.DBRow> rows)
         {
             Message.AddValue("Alarms", rows.Select(i => i.GenerateParamString(true)).ToList());
@@ -109,7 +111,7 @@ namespace BBAlarmsService
             return Message.GetList<String>("Alarms");
         }
 
-        public void AddAlarmStatus(Dictionary<String, AlarmState> states, Buzzer buzzer, Chetch.Arduino.Devices.Switch pilot, bool testing = false)
+        public void AddAlarmStatus(Dictionary<String, AlarmState> states, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
         {
             AddAlarmStates(states);
             if(buzzer != null)AddBuzzer(buzzer);
@@ -135,7 +137,7 @@ namespace BBAlarmsService
             Message.AddValue("BuzzerSilenced", buzzer.IsSilenced);
         }
 
-        public void AddPilot(Chetch.Arduino.Devices.Switch pilot)
+        public void AddPilot(Chetch.Arduino2.Devices.SwitchDevice pilot)
         {
             Message.AddValue("Pilot", pilot.ToString());
             Message.AddValue("PilotID", pilot.ID);
