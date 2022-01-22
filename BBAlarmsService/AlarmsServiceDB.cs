@@ -10,7 +10,7 @@ namespace BBAlarmsService
 {
     public class AlarmsServiceDB : ADMServiceDB
     {
-        static public AlarmsServiceDB Create(System.Configuration.ApplicationSettingsBase settings, String dbnameKey = null)
+        static public new AlarmsServiceDB Create(System.Configuration.ApplicationSettingsBase settings, String dbnameKey = null)
         {
             AlarmsServiceDB db = dbnameKey != null ? DB.Create<AlarmsServiceDB>(settings, dbnameKey) : DB.Create<AlarmsServiceDB>(settings);
             return db;
