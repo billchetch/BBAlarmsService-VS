@@ -62,9 +62,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AlarmsServiceDB.cs" />
-    <Compile Include="BBAlarmsService.cs">
-      <SubType>Component</SubType>
-    </Compile>
+    <Compile Include="BBAlarmsService.cs" />
     <Compile Include="BBAlarmsServiceInstaller.cs">
       <SubType>Component</SubType>
     </Compile>

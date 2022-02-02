@@ -95,14 +95,18 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _currentTest != AlarmTest.NONE; } }
 
-        public BBAlarmsService() : base("BBAlarms", null, "ADMTestService", null)  //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog")
+        public BBAlarmsService() : base("BBAlarms", null, "ADMServiceTest", null)  //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog")
         {
             try
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connecting to Alarms database...");
                 _asdb = AlarmsServiceDB.Create(Properties.Settings.Default, "AlarmsDBName");
+
+                Tracing?.TraceEvent(TraceEventType.Information, 0, "Setting service DB to {0} and settings to default", _asdb.DBName);
                 ServiceDB = _asdb;
-                Tracing?.TraceEvent(TraceEventType.Information, 0, "Connected to Alarms database. Now creating alarms...");
+                Settings = Properties.Settings.Default;
+
+                Tracing?.TraceEvent(TraceEventType.Information, 0, "Creating alarms...");
 
                 var rows = _asdb.SelectAlarms();
                 foreach (var row in rows)
@@ -136,30 +140,12 @@ namespace BBAlarmsService
                 }
 
 
-                Tracing?.TraceEvent(TraceEventType.Information, 0, "Alarms created. Now adding ADM and devices...");
-                _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_UNO, 115200, 64, 64);
-
-                _useArduino = new SwitchDevice("useard", SwitchDevice.SwitchMode.ACTIVE, USE_ARDUINO_PIN);
-                _adm.AddDevice(_useArduino);
-                
-                _pilot = new SwitchDevice("pilot", SwitchDevice.SwitchMode.ACTIVE, PILOT_LIGHT_PIN);                
-                _adm.AddDevice(_pilot);
-
-                _buzzer = new Buzzer("buzzer", BUZZER_PIN);
-                _adm.AddDevice(_buzzer);
-
-                foreach (var a in _localAlarms)
-                {
-                    Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding alarm {0} {1} to {2}", a.AlarmSwitch.ID, a.AlarmName, _adm.UID);
-                    _adm.AddDevice(a.AlarmSwitch);
-                }
-                Tracing?.TraceEvent(TraceEventType.Information, 0, "Added {0} devices to {1}", _adm.DeviceCount, _adm.UID);
-                AddADM(_adm);
-
+                //Started at end of CreateADM (which is called after Client is connected)
                 _updateAlarmStatesTimer = new System.Timers.Timer();
                 _updateAlarmStatesTimer.Interval = UPDATE_ALARM_STATES_INTERVAL;
                 _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(UpdateAlarmStates);
 
+                //triggered by calling  a test
                 _testAlarmTimer = new System.Timers.Timer();
                 _testAlarmTimer.Elapsed += new System.Timers.ElapsedEventHandler(EndTest);
             }
@@ -170,12 +156,31 @@ namespace BBAlarmsService
             }
         }
 
-        
-
-        protected override void OnClientConnect(ClientConnection cnn)
+        protected override void CreateADMs()
         {
-            base.OnClientConnect(cnn);
+            if (_adm != null) return;
 
+            Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding ADM and devices...");
+            _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_UNO, 115200, 64, 64);
+
+            _useArduino = new SwitchDevice("useard", SwitchDevice.SwitchMode.ACTIVE, USE_ARDUINO_PIN);
+            _adm.AddDevice(_useArduino);
+
+            _pilot = new SwitchDevice("pilot", SwitchDevice.SwitchMode.ACTIVE, PILOT_LIGHT_PIN);
+            _adm.AddDevice(_pilot);
+
+            _buzzer = new Buzzer("buzzer", BUZZER_PIN);
+            _adm.AddDevice(_buzzer);
+
+            foreach (var a in _localAlarms)
+            {
+                Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding alarm {0} {1} to {2}", a.AlarmSwitch.ID, a.AlarmName, _adm.UID);
+                _adm.AddDevice(a.AlarmSwitch);
+            }
+            Tracing?.TraceEvent(TraceEventType.Information, 0, "Added {0} devices to {1}", _adm.DeviceCount, _adm.UID);
+            AddADM(_adm);
+
+            //now start the update alarms timer
             _updateAlarmStatesTimer.Start();
         }
 
@@ -417,10 +422,6 @@ namespace BBAlarmsService
             }
 
             System.Threading.Thread.Sleep(500); //allow for states to update (kind of loose here...)
-
-            //ping the board so it doesn't reach inactivity timeout
-            var adm = GetADM(null); //assume only one board
-            if (adm != null) adm.Ping();
 
             //broadcast current states
             AlarmsMessageSchema schema = new AlarmsMessageSchema(new Message());
