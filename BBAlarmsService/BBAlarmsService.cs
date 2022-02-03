@@ -70,7 +70,6 @@ namespace BBAlarmsService
 
         public const int UPDATE_ALARM_STATES_INTERVAL = 30 * 1000;
 
-        public const int USE_ARDUINO_PIN = 7;
         public const int PILOT_LIGHT_PIN = 6;
         public const int BUZZER_PIN = 5;
         
@@ -80,7 +79,6 @@ namespace BBAlarmsService
         private Dictionary<String, String> _alarmMessages = new Dictionary<String, String>();
 
         private ArduinoDeviceManager _adm;
-        private SwitchDevice _useArduino;
         private SwitchDevice _pilot;
         private Buzzer _buzzer;
 
@@ -163,9 +161,6 @@ namespace BBAlarmsService
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding ADM and devices...");
             _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_UNO, 115200, 64, 64);
 
-            _useArduino = new SwitchDevice("useard", SwitchDevice.SwitchMode.ACTIVE, USE_ARDUINO_PIN);
-            _adm.AddDevice(_useArduino);
-
             _pilot = new SwitchDevice("pilot", SwitchDevice.SwitchMode.ACTIVE, PILOT_LIGHT_PIN);
             _adm.AddDevice(_pilot);
 
@@ -182,13 +177,6 @@ namespace BBAlarmsService
 
             //now start the update alarms timer
             _updateAlarmStatesTimer.Start();
-        }
-
-        protected override void OnStop()
-        {
-            if (_useArduino != null)_useArduino.TurnOff();
-
-            base.OnStop();
         }
 
         public override void AddCommandHelp()
