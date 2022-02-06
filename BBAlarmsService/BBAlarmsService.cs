@@ -93,7 +93,7 @@ namespace BBAlarmsService
 
         public bool IsTesting { get { return _currentTest != AlarmTest.NONE; } }
 
-        public BBAlarmsService() : base("BBAlarms", null, "ADMServiceTest", null)  //base("BBAlarms", "BBAlarmsClient", "BBAlarmsService", "BBAlarmsServiceLog")
+        public BBAlarmsService(bool test = false) : base("BBAlarms", test ? null : "BBAlarmsClient", "BBAlarmsService", test ? null : "BBAlarmsServiceLog")
         {
             try
             {
