@@ -154,10 +154,9 @@ namespace BBAlarmsService
             }
         }
 
-        protected override void CreateADMs()
+        protected override bool CreateADMs()
         {
-            if (_adm != null) return;
-
+            
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding ADM and devices...");
             _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_UNO, 115200, 64, 64);
 
@@ -177,6 +176,8 @@ namespace BBAlarmsService
 
             //now start the update alarms timer
             _updateAlarmStatesTimer.Start();
+
+            return true;
         }
 
         public override void AddCommandHelp()
