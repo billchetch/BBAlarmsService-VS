@@ -60,14 +60,6 @@ namespace BBAlarmsService
             }
         }
 
-        enum AlarmTest
-        {
-            NONE,
-            ALARM,
-            BUZZER,
-            PILOT_LIGHT
-        }
-
         public const int UPDATE_ALARM_STATES_INTERVAL = 30 * 1000;
 
         public const int PILOT_LIGHT_PIN = 6;
@@ -158,7 +150,7 @@ namespace BBAlarmsService
         {
             
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding ADM and devices...");
-            _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_UNO, 115200, 64, 64);
+            _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_ARDUINO, 115200, 64, 64);
 
             _pilot = new SwitchDevice("pilot", SwitchDevice.SwitchMode.ACTIVE, PILOT_LIGHT_PIN);
             _adm.AddDevice(_pilot);
@@ -398,7 +390,6 @@ namespace BBAlarmsService
         private void UpdateAlarmStates(Object sender, System.Timers.ElapsedEventArgs ea)
         {
             //request remote alarm states
-            Message message = new Message(Chetch.Messaging.MessageType.COMMAND);
             foreach (var client in _remoteClients)
             {
                 SendCommand(client, AlarmsMessageSchema.COMMAND_ALARM_STATUS);
@@ -410,12 +401,7 @@ namespace BBAlarmsService
                 la.AlarmSwitch.RequestStatus();
             }
 
-            System.Threading.Thread.Sleep(500); //allow for states to update (kind of loose here...)
-
-            //broadcast current states
-            AlarmsMessageSchema schema = new AlarmsMessageSchema(new Message());
-            schema.AddAlarmStatus(_alarmStates, _buzzer, _pilot, IsTesting);
-            Broadcast(message);
+            //TODO: broadcast notification that requests have been made?
         }
 
         //testing
@@ -451,8 +437,13 @@ namespace BBAlarmsService
                     _pilot.TurnOn();
                     break;
             }
+
             
-            //note: these have to be placed after call to state change (see OnStateChange method)
+            //let listeners know a test has started
+            var message = AlarmsMessageSchema.TestingStatus(test, true, _buzzer, _pilot);
+            Broadcast(message);
+            
+            //note: these have to be placed after call to state change (see OnAlarmStateChange method)
             _currentTest = test;
             _testAlarmTimer.Interval = testSecs * 1000;
             _testAlarmTimer.Start();
@@ -488,6 +479,11 @@ namespace BBAlarmsService
                     _pilot.TurnOff();
                     break;
             }
+
+            //broadcast end of test
+            //let listeners know a test has started
+            var msg = AlarmsMessageSchema.TestingStatus(atest, false, _buzzer, _pilot);
+            Broadcast(msg);
         }
     } //end class
 }

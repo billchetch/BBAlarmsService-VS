@@ -20,6 +20,14 @@ namespace BBAlarmsService
         CRITICAL,
     }
 
+    public enum AlarmTest
+    {
+        NONE,
+        ALARM,
+        BUZZER,
+        PILOT_LIGHT
+    }
+
     public class AlarmsMessageSchema : ADMService.MessageSchema
     {
         public const String COMMAND_ALARM_STATUS = "alarm-status";
@@ -53,7 +61,20 @@ namespace BBAlarmsService
             return msg;
         }
 
-        //this is for this service to broadcast to listeners
+        static public Message TestingStatus(AlarmTest alarmTest, bool testing, Buzzer buzzer, Chetch.Arduino2.Devices.SwitchDevice pilot)
+        {
+            Message msg = new Message(MessageType.NOTIFICATION);
+            msg.AddValue("AlarmTest", alarmTest);
+            msg.AddValue("Testing", testing);
+
+            var schema = new AlarmsMessageSchema(msg);
+            if (buzzer != null) schema.AddBuzzer(buzzer);
+            if (pilot != null) schema.AddPilot(pilot);
+
+            return msg;
+        }
+
+        /*//this is for this service to broadcast to listeners
         static public bool RaiseAlarm(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, SwitchDevice pilot = null)
         {
             bool alreadyRaised = (_raisedAlarms.ContainsKey(alarmID) && _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") == alarmState);
@@ -87,7 +108,7 @@ namespace BBAlarmsService
             }
 
             return !alreadyLowered;
-        }
+        } */
 
 
         static public bool IsAlarmStateOn(AlarmState state)
