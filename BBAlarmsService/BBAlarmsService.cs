@@ -16,7 +16,9 @@ namespace BBAlarmsService
         {
             public String AlarmID { get { return AlarmSwitch.ID; } }
             public String AlarmName { get; internal set; }
+
             public SwitchDevice AlarmSwitch { get; internal set; }
+
             
             public LocalAlarm(String alarmName, String alarmID, byte pin, int tolerance)
             {
@@ -65,10 +67,10 @@ namespace BBAlarmsService
         public const int PILOT_LIGHT_PIN = 6;
         public const int BUZZER_PIN = 5;
         
-        private List<LocalAlarm> _localAlarms = new List<LocalAlarm>();
-        private List<RemoteAlarm> _remoteAlarms = new List<RemoteAlarm>();
+        private Dictionary<String, LocalAlarm> _localAlarms = new Dictionary<string, LocalAlarm>();
+        private Dictionary<String, RemoteAlarm> _remoteAlarms = new Dictionary<String, RemoteAlarm>();
         private Dictionary<String, AlarmState> _alarmStates = new Dictionary<String, AlarmState>();
-        private Dictionary<String, String> _alarmMessages = new Dictionary<String, String>();
+        //private Dictionary<String, String> _alarmMessages = new Dictionary<String, String>();
 
         private ArduinoDeviceManager _adm;
         private SwitchDevice _pilot;
@@ -104,6 +106,8 @@ namespace BBAlarmsService
                     String source = row.GetString("alarm_source");
                     String alarmID = row.GetString("alarm_id");
                     String alarmName = row.GetString("alarm_name");
+                    DateTime lastRaised = row.GetDateTime("last_raised");
+                    DateTime lastLowered = row.GetDateTime("last_lowered");
                     if (source == null || source == String.Empty)
                     {
                         //The alarm is local and provided by an ADM input
@@ -111,7 +115,7 @@ namespace BBAlarmsService
                         if (pin == 0) throw new Exception("BBAlarmsService: Cannot have an alarm pin 0");
                         LocalAlarm la = new LocalAlarm(alarmName, alarmID, pin, row.GetInt("noise_threshold"));
                         la.AlarmSwitch.Switched += HandleLocalAlarm;
-                        _localAlarms.Add(la);
+                        _localAlarms[alarmID] = la;
                         Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} local alarm with device id {1} and device name {2} for pin {3}", row["alarm_name"], la.AlarmSwitch.ID, la.AlarmSwitch.Name, pin);
                     }
                     else
@@ -119,14 +123,13 @@ namespace BBAlarmsService
                         //The alarm is remote so we need to subscribe to the remote service and listen
                         RemoteAlarm ra = new RemoteAlarm(alarmID, alarmName, source);
                         ra.HandleMatched += HandleRemoteAlarmMessage;
-                        _remoteAlarms.Add(ra);
+                        _remoteAlarms[alarmID] = ra;
                         Subscribe(ra);
                         Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} remote alarm @ {1} with id {2}", ra.AlarmName, source, alarmID);
 
                         if (!_remoteClients.Contains(source))_remoteClients.Add(source);
                     }
                     _alarmStates[alarmID] = AlarmState.OFF;
-                    _alarmMessages[alarmID] = null;
                 }
 
 
@@ -158,7 +161,7 @@ namespace BBAlarmsService
             _buzzer = new Buzzer("buzzer", BUZZER_PIN);
             _adm.AddDevice(_buzzer);
 
-            foreach (var a in _localAlarms)
+            foreach (var a in _localAlarms.Values)
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding alarm {0} {1} to {2}", a.AlarmSwitch.ID, a.AlarmName, _adm.UID);
                 _adm.AddDevice(a.AlarmSwitch);
@@ -213,9 +216,11 @@ namespace BBAlarmsService
         private void HandleLocalAlarm(Object sender, SwitchDevice.SwitchPosition pos)
         {
             SwitchDevice dev = (SwitchDevice)sender;
-            if (dev != null && _alarmStates.ContainsKey(dev.ID))
+            if (dev != null && _localAlarms.ContainsKey(dev.ID))
             {
+                LocalAlarm a = _localAlarms[dev.ID];
                 String msg = String.Format("Alarm {0} {1} @ {2}", dev.ID, dev.IsOn ? "on" : "off", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                
                 OnAlarmStateChanged(dev.ID, dev.IsOn ? AlarmState.CRITICAL : AlarmState.OFF, msg);
             }
         }
@@ -241,17 +246,20 @@ namespace BBAlarmsService
 
             //keep track of the new state in a ID to state map
             _alarmStates[alarmID] = newState;
-            _alarmMessages[alarmID] = alarmMessage;
+            
 
-            //a state change has occurred so we log it
-            try
+            //a state change has occurred so we log it if it's not testing
+            if (!testing)
             {
-                //Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm device {0} change of state to {1}", deviceID, newState);
-                _asdb.LogStateChange(alarmID, newState, alarmMessage, comments);
-            }
-            catch (Exception e)
-            {
-                Tracing?.TraceEvent(TraceEventType.Error, 0, "Logging alarm error: {0}", e.Message);
+                try
+                {
+                    //Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm device {0} change of state to {1}", deviceID, newState);
+                    _asdb.LogStateChange(alarmID, newState, alarmMessage, comments);
+                }
+                catch (Exception e)
+                {
+                    Tracing?.TraceEvent(TraceEventType.Error, 0, "Logging alarm error: {0}", e.Message);
+                }
             }
 
             //turn buzzer on or off
@@ -277,27 +285,37 @@ namespace BBAlarmsService
             Broadcast(alert);
         }
 
-        private void EnableAlarm(String id, bool enable)
+        private bool EnableAlarm(String id, bool enable)
         {
             //search local alarms
-            foreach (var a in _localAlarms)
+            if (_localAlarms.ContainsKey(id))
             {
-                if (a.AlarmSwitch.ID.Equals(id))
+                LocalAlarm la = _localAlarms[id];
+                if (la.AlarmSwitch.Enabled != enable) { 
+                    la.AlarmSwitch.Enable(enable);
+                    return true;
+                } else
                 {
-                    a.AlarmSwitch.Enable(enable);
-                    return;
+                    return false;
+                }
+            }
+            
+            //search remote alarms
+            if (_remoteAlarms.ContainsKey(id))
+            {
+                RemoteAlarm ra = _remoteAlarms[id];
+                if (ra.Enabled != enable)
+                {
+                    ra.Enable(enable);
+                    return true;
+                }
+                else
+                {
+                    return false;
                 }
             }
 
-            //search remote alarms
-            foreach (var a in _remoteAlarms)
-            {
-                if (a.AlarmID.Equals(id))
-                {
-                    a.Enable(enable);
-                    return;
-                }
-            }
+            return false;
         }
 
         override public bool HandleCommand(Connection cnn, Message message, String cmd, List<Object> args, Message response)
@@ -341,18 +359,28 @@ namespace BBAlarmsService
                     if (args.Count == 0) throw new Exception("No alarm specified to disable");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
-                    EnableAlarm(id, false);
-                    OnAlarmStateChanged(id, AlarmState.DISABLED, null, String.Format("Command sent from {0}", message.Sender));
-                    response.Value = String.Format("Alarm {0} disabled", id);
+                    if (EnableAlarm(id, false))
+                    {
+                        OnAlarmStateChanged(id, AlarmState.DISABLED, null, String.Format("Command sent from {0}", message.Sender));
+                        response.Value = String.Format("Alarm {0} disabled", id);
+                    } else
+                    {
+                        response.Value = String.Format("Alarm {0} already disabled", id);
+                    }
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_ENABLE_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to enable");
                     id = args[0].ToString();
                     if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
-                    EnableAlarm(id, true);
-                    OnAlarmStateChanged(id, AlarmState.OFF, null, String.Format("Command sent from {0}", message.Sender));
-                    response.Value = String.Format("Alarm {0} enabled", id);
+                    if (EnableAlarm(id, true))
+                    {
+                        OnAlarmStateChanged(id, AlarmState.OFF, null, String.Format("Command sent from {0}", message.Sender));
+                        response.Value = String.Format("Alarm {0} enabled", id);
+                    } else
+                    {
+                        response.Value = String.Format("Alaram {0} already enabled", id);
+                    }
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_ALARM:
@@ -396,7 +424,7 @@ namespace BBAlarmsService
             }
 
             //request local states
-            foreach(LocalAlarm la in _localAlarms)
+            foreach(LocalAlarm la in _localAlarms.Values)
             {
                 la.AlarmSwitch.RequestStatus();
             }
