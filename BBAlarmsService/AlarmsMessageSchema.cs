@@ -122,9 +122,20 @@ namespace BBAlarmsService
 
         public AlarmsMessageSchema(MessageType messageType) : base(messageType) { }
 
-        public void AddAlarms(List<Chetch.Database.DBRow> rows)
+        
+        public void AddAlarms(List<Chetch.Database.DBRow> rows, String tzOffset)
         {
-            Message.AddValue("Alarms", rows.Select(i => i.GenerateParamString(true)).ToList());
+            var l = rows.Select(i => i.GenerateParamString(true, (k, v, b) => { 
+                if(v is DateTime)
+                {
+                    DateTime dt = (DateTime)v;
+                    String d = dt == DateTime.MinValue || dt == DateTime.MaxValue ? String.Empty : dt.ToString(Chetch.Database.DB.DATE_TIME_FORMAT) + " " + tzOffset;
+                    return i.GenerateParamString(k, d, true);
+                } else {
+                    return i.GenerateParamString(k, v, true);
+                } 
+            })).ToList();
+            Message.AddValue("Alarms", l); 
         }
 
         public List<String> GetAlarms()

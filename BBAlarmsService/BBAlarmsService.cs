@@ -12,10 +12,38 @@ namespace BBAlarmsService
 {
     public class BBAlarmsService : ADMService
     {
-        class LocalAlarm
+        interface IAlarm
         {
-            public String AlarmID { get { return AlarmSwitch.ID; } }
-            public String AlarmName { get; internal set; }
+            String AlarmID { get; set; }
+
+            String AlarmName { get; set; }
+            
+            AlarmState AlarmState { get; set; }
+
+            String AlarmMessage { get; set; }
+
+            DateTime LastRaised { get; set; }
+
+            DateTime LastLowered { get; set; }
+
+            DateTime LastDisabled { get; set; }
+        }
+
+        class LocalAlarm : IAlarm
+        {
+            public String AlarmID { get { return AlarmSwitch.ID; } set { } }
+            public String AlarmName { get; set; }
+
+            public AlarmState AlarmState { get; set; } = AlarmState.OFF;
+
+            public String AlarmMessage { get; set; }
+
+
+            public DateTime LastRaised { get; set; }
+
+            public DateTime LastLowered { get; set; }
+
+            public DateTime LastDisabled { get; set; }
 
             public SwitchDevice AlarmSwitch { get; internal set; }
 
@@ -28,12 +56,19 @@ namespace BBAlarmsService
 
         }
 
-        class RemoteAlarm : MessageFilter
+        class RemoteAlarm : MessageFilter, IAlarm
         {
-            public String AlarmID { get; internal set; }
-            public String AlarmName { get; internal set; }
-            public AlarmState AlarmState { get; internal set; } = AlarmState.OFF;
-            public String AlarmMessage { get; internal set; }
+            public String AlarmID { get;  set; }
+            public String AlarmName { get;  set; }
+            public AlarmState AlarmState { get;  set; } = AlarmState.OFF;
+            public String AlarmMessage { get; set; }
+
+            public DateTime LastRaised { get; set; }
+
+            public DateTime LastLowered { get; set; }
+
+            public DateTime LastDisabled { get; set; }
+
             public bool IsOn { get { return AlarmsMessageSchema.IsAlarmStateOn(AlarmState); } }
             public bool IsOff { get { return !IsOn; } }
             public bool Enabled { get; internal set; } = true;
@@ -69,8 +104,22 @@ namespace BBAlarmsService
         
         private Dictionary<String, LocalAlarm> _localAlarms = new Dictionary<string, LocalAlarm>();
         private Dictionary<String, RemoteAlarm> _remoteAlarms = new Dictionary<String, RemoteAlarm>();
-        private Dictionary<String, AlarmState> _alarmStates = new Dictionary<String, AlarmState>();
-        //private Dictionary<String, String> _alarmMessages = new Dictionary<String, String>();
+        private Dictionary<String, IAlarm> _alarms = new Dictionary<String, IAlarm>();
+        private Dictionary<String, long> _alarm2DBIDMap = new Dictionary<String, long>();
+        public Dictionary<String, AlarmState> AlarmStates
+        {
+            get
+            {
+                Dictionary<String, AlarmState> states = new Dictionary<String, AlarmState>();
+                foreach(var a in _alarms.Values)
+                {
+                    states[a.AlarmID] = a.AlarmState;
+                }
+                return states;
+            }
+
+            set { }
+        }
 
         private ArduinoDeviceManager _adm;
         private SwitchDevice _pilot;
@@ -106,9 +155,13 @@ namespace BBAlarmsService
                     String source = row.GetString("alarm_source");
                     String alarmID = row.GetString("alarm_id");
                     String alarmName = row.GetString("alarm_name");
+
                     DateTime lastRaised = row.GetDateTime("last_raised");
                     DateTime lastLowered = row.GetDateTime("last_lowered");
-                    if (source == null || source == String.Empty)
+                    DateTime lastDisabled = row.GetDateTime("last_disabled");
+
+                    IAlarm a;
+                    if (String.IsNullOrEmpty(source)) //means local
                     {
                         //The alarm is local and provided by an ADM input
                         byte pin = row.GetByte("pin_number");
@@ -117,6 +170,7 @@ namespace BBAlarmsService
                         la.AlarmSwitch.Switched += HandleLocalAlarm;
                         _localAlarms[alarmID] = la;
                         Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} local alarm with device id {1} and device name {2} for pin {3}", row["alarm_name"], la.AlarmSwitch.ID, la.AlarmSwitch.Name, pin);
+                        a = la;
                     }
                     else
                     {
@@ -128,8 +182,11 @@ namespace BBAlarmsService
                         Tracing?.TraceEvent(TraceEventType.Information, 0, "Created {0} remote alarm @ {1} with id {2}", ra.AlarmName, source, alarmID);
 
                         if (!_remoteClients.Contains(source))_remoteClients.Add(source);
+
+                        a = ra;
                     }
-                    _alarmStates[alarmID] = AlarmState.OFF;
+                    _alarms[a.AlarmID] = a;
+                    _alarm2DBIDMap[a.AlarmID] = row.ID;
                 }
 
 
@@ -191,24 +248,21 @@ namespace BBAlarmsService
             AddCommandHelp(AlarmsMessageSchema.COMMAND_END_TEST, "End current test");
         }
 
-        private bool HasAlarmWithState(AlarmState alarmState, Dictionary<String, AlarmState> states = null)
+        private bool HasAlarmWithState(AlarmState alarmState)
         {
-            if (states == null) states = _alarmStates;
 
-            foreach (var state in states.Values)
+            foreach (IAlarm a in _alarms.Values)
             {
-                if (state == alarmState) return true;
+                if (a.AlarmState == alarmState) return true;
             }
             return false;
         }
 
-        private bool IsAlarmOn(Dictionary<String, AlarmState> states = null)
+        private bool IsAlarmOn()
         {
-            if (states == null) states = _alarmStates;
-
-            foreach (var state in states.Values)
+            foreach (IAlarm a in _alarms.Values)
             {
-                if (AlarmsMessageSchema.IsAlarmStateOn(state)) return true;
+                if (AlarmsMessageSchema.IsAlarmStateOn(a.AlarmState)) return true;
             }
             return false;
         }
@@ -227,17 +281,28 @@ namespace BBAlarmsService
 
         private void HandleRemoteAlarmMessage(MessageFilter remote, Message message)
         {
-            RemoteAlarm a = (RemoteAlarm)remote;
+            RemoteAlarm ra = (RemoteAlarm)remote;
 
-            bool isEvent = !_alarmStates.ContainsKey(a.AlarmID) || a.AlarmState != _alarmStates[a.AlarmID];
-            if (isEvent) 
+            if (_alarms.ContainsKey(ra.AlarmID))
             {
-                OnAlarmStateChanged(a.AlarmID, a.AlarmState, a.AlarmMessage);
+                IAlarm a = _alarms[ra.AlarmID];
+                if(a.AlarmState != ra.AlarmState)
+                {
+                    OnAlarmStateChanged(a.AlarmID, a.AlarmState, a.AlarmMessage);
+                }
+            } else
+            {
+                Tracing?.TraceEvent(TraceEventType.Error, 1000, String.Format("Handling remote alarm message but no alarm found for ID {0}", ra.AlarmID));
             }
         }
 
         private void OnAlarmStateChanged(String alarmID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
         {
+            if (!_alarms.ContainsKey(alarmID))
+            {
+                throw new Exception("No alarm found with ID " + alarmID);
+            }
+
             //if this is called while testing then we end the test as his takes priority
             if (IsTesting)
             {
@@ -245,7 +310,7 @@ namespace BBAlarmsService
             }
 
             //keep track of the new state in a ID to state map
-            _alarmStates[alarmID] = newState;
+            _alarms[alarmID].AlarmState = newState;
             
 
             //a state change has occurred so we log it if it's not testing
@@ -255,6 +320,10 @@ namespace BBAlarmsService
                 {
                     //Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm device {0} change of state to {1}", deviceID, newState);
                     _asdb.LogStateChange(alarmID, newState, alarmMessage, comments);
+                    long id = _alarm2DBIDMap[alarmID];
+                    _alarms[alarmID].LastRaised = _asdb.GetAlarmLastRaised(id);
+                    _alarms[alarmID].LastLowered = _asdb.GetAlarmLastLowered(id);
+                    _alarms[alarmID].LastDisabled = _asdb.GetAlarmLastDisabled(id);
                 }
                 catch (Exception e)
                 {
@@ -327,11 +396,11 @@ namespace BBAlarmsService
             {
                 case AlarmsMessageSchema.COMMAND_LIST_ALARMS:
                     var rows = _asdb.SelectAlarms();
-                    schema.AddAlarms(rows);
+                    schema.AddAlarms(rows, _asdb.GetTimezoneOffset());
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_ALARM_STATUS:
-                    schema.AddAlarmStatus(_alarmStates, _buzzer, _pilot, IsTesting);
+                    schema.AddAlarmStatus(AlarmStates, _buzzer, _pilot, IsTesting);
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_SILENCE:
@@ -358,7 +427,7 @@ namespace BBAlarmsService
                 case AlarmsMessageSchema.COMMAND_DISABLE_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to disable");
                     id = args[0].ToString();
-                    if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
+                    if (!_alarms.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
                     if (EnableAlarm(id, false))
                     {
                         OnAlarmStateChanged(id, AlarmState.DISABLED, null, String.Format("Command sent from {0}", message.Sender));
@@ -372,7 +441,7 @@ namespace BBAlarmsService
                 case AlarmsMessageSchema.COMMAND_ENABLE_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to enable");
                     id = args[0].ToString();
-                    if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
+                    if (!_alarms.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
                     if (EnableAlarm(id, true))
                     {
                         OnAlarmStateChanged(id, AlarmState.OFF, null, String.Format("Command sent from {0}", message.Sender));
@@ -386,7 +455,7 @@ namespace BBAlarmsService
                 case AlarmsMessageSchema.COMMAND_TEST_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to test");
                     id = args[0].ToString();
-                    if (!_alarmStates.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
+                    if (!_alarms.ContainsKey(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
                     AlarmState alarmState = args.Count > 1 ? (AlarmState)System.Convert.ToInt16(args[1]) : AlarmState.CRITICAL;
                     secs = args.Count > 2 ? System.Convert.ToInt16(args[2]) : 5;
                     StartTest(AlarmTest.ALARM, id, alarmState, secs);
@@ -441,8 +510,8 @@ namespace BBAlarmsService
             switch (test)
             {
                 case AlarmTest.ALARM:
-                    if (!_alarmStates.ContainsKey(alarmID)) throw new Exception(String.Format("No alarm found with id {0}", alarmID));
-                    if (_alarmStates[alarmID] != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", alarmID, _alarmStates[alarmID]));
+                    if (!_alarms.ContainsKey(alarmID)) throw new Exception(String.Format("No alarm found with id {0}", alarmID));
+                    if (_alarms[alarmID].AlarmState != AlarmState.OFF) throw new Exception(String.Format("Cannot test alarm {0} as it is {1}", alarmID, _alarms[alarmID].AlarmState));
 
                     _testingAlarmID = alarmID;
 
