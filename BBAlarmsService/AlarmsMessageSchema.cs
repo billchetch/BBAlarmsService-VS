@@ -151,6 +151,14 @@ namespace BBAlarmsService
             AddTesting(testing);
         }
 
+        public void AddAlarmStatus(AlarmState alarmState, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
+        {
+            Message.AddValue("AlarmState", alarmState);
+            if (buzzer != null) AddBuzzer(buzzer);
+            if (pilot != null) AddPilot(pilot);
+            AddTesting(testing);
+        }
+
         public void AddAlarmStates(Dictionary<String, AlarmState> states)
         {
             Message.AddValue("AlarmStates", states);

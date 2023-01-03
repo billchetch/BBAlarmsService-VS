@@ -267,7 +267,7 @@ namespace BBAlarmsService
             return false;
         }
 
-        private void HandleLocalAlarm(Object sender, SwitchDevice.SwitchPosition pos)
+        private void HandleLocalAlarm(Object sender, SwitchDevice.SwitchPosition oldPos)
         {
             SwitchDevice dev = (SwitchDevice)sender;
             if (dev != null && _localAlarms.ContainsKey(dev.ID))
@@ -400,7 +400,20 @@ namespace BBAlarmsService
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_ALARM_STATUS:
-                    schema.AddAlarmStatus(AlarmStates, _buzzer, _pilot, IsTesting);
+                    if (args.Count > 0)
+                    {
+                        id = args[0].ToString();
+                        if (!_alarms.ContainsKey(id))
+                        {
+                            throw new Exception(String.Format("There is no alarm with ID {0}", id));
+                        }
+                        var alarm = _alarms[id];
+                        schema.AddAlarmStatus(alarm.AlarmState, _buzzer, _pilot, IsTesting);
+                    }
+                    else
+                    {
+                        schema.AddAlarmStatus(AlarmStates, _buzzer, _pilot, IsTesting);
+                    }
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_SILENCE:
