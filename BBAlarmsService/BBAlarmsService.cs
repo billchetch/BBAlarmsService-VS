@@ -185,6 +185,11 @@ namespace BBAlarmsService
 
                         a = ra;
                     }
+
+                    a.LastRaised = lastRaised;
+                    a.LastLowered = lastLowered;
+                    a.LastDisabled = lastDisabled;
+
                     _alarms[a.AlarmID] = a;
                     _alarm2DBIDMap[a.AlarmID] = row.ID;
                 }
