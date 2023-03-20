@@ -101,6 +101,7 @@ namespace BBAlarmsService
 
         public const int PILOT_LIGHT_PIN = 6;
         public const int BUZZER_PIN = 5;
+        public const int MASTER_PIN = 7;
         
         private Dictionary<String, LocalAlarm> _localAlarms = new Dictionary<string, LocalAlarm>();
         private Dictionary<String, RemoteAlarm> _remoteAlarms = new Dictionary<String, RemoteAlarm>();
@@ -124,6 +125,7 @@ namespace BBAlarmsService
         private ArduinoDeviceManager _adm;
         private SwitchDevice _pilot;
         private Buzzer _buzzer;
+        private SwitchDevice _master; //this is a switch that when activated means that the pilot and buzzer can be activated only by this service (rather than directly)
 
         private AlarmsServiceDB _asdb;
 
@@ -223,6 +225,9 @@ namespace BBAlarmsService
             _buzzer = new Buzzer("buzzer", BUZZER_PIN);
             _adm.AddDevice(_buzzer);
 
+            _master = new SwitchDevice("master", SwitchDevice.SwitchMode.ACTIVE, MASTER_PIN);
+            _adm.AddDevice(_master);
+
             foreach (var a in _localAlarms.Values)
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding alarm {0} {1} to {2}", a.AlarmSwitch.ID, a.AlarmName, _adm.UID);
@@ -251,6 +256,7 @@ namespace BBAlarmsService
             AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_BUZZER, "Sound buzzer for a short period of time");
             AddCommandHelp(AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT, "Turn on pilot light for a short period of time");
             AddCommandHelp(AlarmsMessageSchema.COMMAND_END_TEST, "End current test");
+            AddCommandHelp(AlarmsMessageSchema.COMMAND_MASTER, "Turn master <on/off>");
         }
 
         private bool HasAlarmWithState(AlarmState alarmState)
@@ -279,8 +285,16 @@ namespace BBAlarmsService
             {
                 LocalAlarm a = _localAlarms[dev.ID];
                 String msg = String.Format("Alarm {0} {1} @ {2}", dev.ID, dev.IsOn ? "on" : "off", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                
-                OnAlarmStateChanged(dev.ID, dev.IsOn ? AlarmState.CRITICAL : AlarmState.OFF, msg);
+
+                try
+                {
+                    //_master.TurnOn();
+                    OnAlarmStateChanged(dev.ID, dev.IsOn ? AlarmState.CRITICAL : AlarmState.OFF, msg);
+                }
+                finally
+                {
+                    //_master.TurnOff();
+                }
             }
         }
 
@@ -495,6 +509,22 @@ namespace BBAlarmsService
                 case AlarmsMessageSchema.COMMAND_END_TEST:
                     EndTest(null, null);
                     response.Value = "Ending current test";
+                    return true;
+
+                case AlarmsMessageSchema.COMMAND_MASTER:
+                    if (args.Count == 0) throw new Exception("Not specified on or off for master");
+                    String maction = args[0].ToString().ToLower();
+                    if (maction.Equals("on"))
+                    {
+                        _master.TurnOn();
+                    } else if (maction.Equals("off"))
+                    {
+                        _master.TurnOff();
+                    }
+                    else
+                    {
+                        throw new Exception(String.Format("{0} is an unrecognised action", maction));
+                    }
                     return true;
 
                 default:
