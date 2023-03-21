@@ -213,6 +213,15 @@ namespace BBAlarmsService
             }
         }
 
+        protected override void OnStop()
+        {
+            if(_master != null)
+            {
+                _master.TurnOff();
+            }
+            base.OnStop();
+        }
+
         protected override bool CreateADMs()
         {
             
@@ -286,15 +295,7 @@ namespace BBAlarmsService
                 LocalAlarm a = _localAlarms[dev.ID];
                 String msg = String.Format("Alarm {0} {1} @ {2}", dev.ID, dev.IsOn ? "on" : "off", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
 
-                try
-                {
-                    //_master.TurnOn();
-                    OnAlarmStateChanged(dev.ID, dev.IsOn ? AlarmState.CRITICAL : AlarmState.OFF, msg);
-                }
-                finally
-                {
-                    //_master.TurnOff();
-                }
+                OnAlarmStateChanged(dev.ID, dev.IsOn ? AlarmState.CRITICAL : AlarmState.OFF, msg);
             }
         }
 
@@ -353,6 +354,7 @@ namespace BBAlarmsService
             //turn buzzer on or off
             if (IsAlarmOn()) //if at least one alarm is on
             {
+                _master.TurnOn(); //this prevents bypassing
                 _pilot.TurnOn();
                 if (HasAlarmWithState(AlarmState.CRITICAL))
                 {
@@ -366,6 +368,7 @@ namespace BBAlarmsService
             {
                 _pilot.TurnOff();
                 _buzzer.TurnOff();
+                _master.TurnOff();
             }
 
             //finally we broadcast to any listeners
