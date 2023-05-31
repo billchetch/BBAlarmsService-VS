@@ -123,6 +123,16 @@ namespace BBAlarmsService
         }
 
         private ArduinoDeviceManager _adm;
+        public ArduinoDeviceManager ADM
+        {
+            get { return _adm; }
+            set
+            {
+                if (_adm != null) throw new Exception("ADM already present");
+                _adm = value;
+            }
+        }
+
         private SwitchDevice _pilot;
         private Buzzer _buzzer;
         private SwitchDevice _master; //this is a switch that when activated means that the pilot and buzzer can be activated only by this service (rather than directly)
@@ -226,15 +236,24 @@ namespace BBAlarmsService
 
         protected override bool CreateADMs()
         {
-            
+
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding ADM and devices...");
-            _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_ARDUINO, 115200, 64, 64);
+            if (_adm == null)
+            {
+                _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_ARDUINO, 115200, 64, 64);
+                Tracing?.TraceEvent(TraceEventType.Information, 0, "Created USB connected ADM {0}", _adm.UID);
+            }
+            else
+            {
+                Tracing?.TraceEvent(TraceEventType.Information, 0, "Use supplied ADM {0}", _adm.UID);
+            }
 
             _pilot = new SwitchDevice("pilot", SwitchDevice.SwitchMode.ACTIVE, PILOT_LIGHT_PIN);
             _adm.AddDevice(_pilot);
 
             _buzzer = new Buzzer("buzzer", BUZZER_PIN);
             _adm.AddDevice(_buzzer);
+
 
             _master = new SwitchDevice("master", SwitchDevice.SwitchMode.ACTIVE, MASTER_PIN);
             _adm.AddDevice(_master);
