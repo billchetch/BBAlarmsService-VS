@@ -377,10 +377,11 @@ namespace BBAlarmsService
             {
                 _master.TurnOn(); //this prevents bypassing
                 _pilot.TurnOn();
-                if (HasAlarmWithState(AlarmState.CRITICAL))
+                if (!_buzzer.IsSilenced && HasAlarmWithState(AlarmState.CRITICAL))
                 {
                     _buzzer.TurnOn();
-                } else
+                }
+                else
                 {
                     _buzzer.TurnOff();
                 }
