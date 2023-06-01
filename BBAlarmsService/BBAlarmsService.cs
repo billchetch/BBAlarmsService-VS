@@ -152,7 +152,7 @@ namespace BBAlarmsService
         {
             try
             {
-                AboutSummary = "BB Alarms Service v. 1.0.1";
+                AboutSummary = "BB Alarms Service v. 1.0.2";
 
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connecting to Alarms database...");
                 _asdb = AlarmsServiceDB.Create(Properties.Settings.Default, "AlarmsDBName");
