@@ -76,42 +76,6 @@ namespace BBAlarmsService
             return msg;
         }
 
-        /*//this is for this service to broadcast to listeners
-        static public bool RaiseAlarm(ADMService alertingService, String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, SwitchDevice pilot = null)
-        {
-            bool alreadyRaised = (_raisedAlarms.ContainsKey(alarmID) && _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") == alarmState);
-            Message msg = null;
-            try {
-                msg = AlertAlarmStateChange(alarmID, alarmState, alarmMessage, testing, buzzer, pilot);
-                alertingService?.Broadcast(msg);
-                _raisedAlarms[alarmID] = msg;
-            }
-            catch (Exception)
-            {
-
-            }
-            return !alreadyRaised;
-        }
-
-        
-        public static bool LowerAlarm(ADMService alertingService, String alarmID, AlarmState alarmState = AlarmState.OFF, String alarmMessage = null, bool testing = false)
-        {
-            bool alreadyLowered = (!_raisedAlarms.ContainsKey(alarmID) || _raisedAlarms[alarmID].GetEnum<AlarmState>("AlarmState") <= AlarmState.OFF);
-
-            Message msg = null;
-            try
-            {
-                msg = AlertAlarmStateChange(alarmID, alarmState, alarmMessage, testing);
-                alertingService?.Broadcast(msg);
-                _raisedAlarms[alarmID] = msg;
-            } catch (Exception)
-            {
-
-            }
-
-            return !alreadyLowered;
-        } */
-
 
         static public bool IsAlarmStateOn(AlarmState state)
         {
