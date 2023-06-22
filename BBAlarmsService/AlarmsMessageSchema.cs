@@ -30,6 +30,8 @@ namespace BBAlarmsService
 
     public class AlarmsMessageSchema : ADMService.MessageSchema
     {
+        public const String ALARMS_SERVICE_NAME = "BBAlarms";
+
         public const String COMMAND_ALARM_STATUS = "alarm-status";
         public const String COMMAND_LIST_ALARMS = "list-alarms";
         public const String COMMAND_SILENCE = "silence";
@@ -76,11 +78,6 @@ namespace BBAlarmsService
             return msg;
         }
 
-
-        static public bool IsAlarmStateOn(AlarmState state)
-        {
-            return state != AlarmState.OFF && state != AlarmState.DISABLED;
-        }
 
         public AlarmsMessageSchema() { }
 

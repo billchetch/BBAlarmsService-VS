@@ -61,6 +61,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AlarmManager.cs" />
     <Compile Include="AlarmsServiceDB.cs" />
     <Compile Include="BBAlarmsService.cs" />
     <Compile Include="BBAlarmsServiceInstaller.cs">
