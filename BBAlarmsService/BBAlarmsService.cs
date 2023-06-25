@@ -46,6 +46,10 @@ namespace BBAlarmsService
                 };
             }
 
+            public void RegisterAlarms()
+            {
+                AlarmManager.RegisterAlarm(this, AlarmID, AlarmName);
+            }
 
             public void RequestUpdateAlarms()
             {
@@ -89,6 +93,11 @@ namespace BBAlarmsService
                 base.OnMatched(message);
 
                 AlarmManager?.UpdateAlarm(_alarmID, _alarmState, _alarmMessage);
+            }
+
+            public void RegisterAlarms()
+            {
+                AlarmManager.RegisterAlarm(this, _alarmID);
             }
 
             public void RequestUpdateAlarms()
@@ -152,12 +161,7 @@ namespace BBAlarmsService
                     String source = row.GetString("alarm_source");
                     String alarmID = row.GetString("alarm_id");
                     String alarmName = row.GetString("alarm_name");
-                    AlarmManager.Alarm alarm = _alarmManager.AddAlarm(alarmID, alarmName);
-
-                    alarm.LastRaised = row.GetDateTime("last_raised");
-                    alarm.LastLowered = row.GetDateTime("last_lowered");
-                    alarm.LastDisabled = row.GetDateTime("last_disabled");
-
+                    
                     AlarmManager.IAlarmRaiser raiser;
                     if (String.IsNullOrEmpty(source)) //means local
                     {
@@ -174,11 +178,16 @@ namespace BBAlarmsService
                         Subscribe((MessageFilter)raiser);
                     }
                     _alarmManager.AddRaiser(raiser);
+                    var alarm = _alarmManager.GetAlarm(alarmID);
+                    alarm.Name = alarmName;
+                    alarm.LastRaised = row.GetDateTime("last_raised");
+                    alarm.LastLowered = row.GetDateTime("last_lowered");
+                    alarm.LastDisabled = row.GetDateTime("last_disabled");
                 }
 
                 _alarmManager.AlarmStateChanged += (Object sender, AlarmManager.Alarm alarm) =>
                 {
-                    onAlarmStateChanged(alarm.ID, alarm.State, alarm.Message);
+                    onAlarmStateChanged(alarm); //.ID, alarm.State, alarm.Message);
                 };
 
                 //Started at end of CreateADM (which is called after Client is connected)
@@ -275,22 +284,21 @@ namespace BBAlarmsService
         }
 
 
-        private void onAlarmStateChanged(String alarmID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
+        private void onAlarmStateChanged(AlarmManager.Alarm alarm, String comments = "") //String alarmID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
         {
             //if this is called while testing then we end the test as his takes priority
-            if (IsTesting && !testing)
+            if (IsTesting && !alarm.IsTesting)
             {
-                EndTest(String.Format("Ending test because {0} changed state to {1}", alarmID, newState), null);
+                EndTest(String.Format("Ending test because {0} changed state to {1}", alarm.ID, alarm.State), null);
             }
 
-            
             //a state change has occurred so we log it if it's not testing
-            if (!testing)
+            if (!alarm.IsTesting)
             {
                 try
                 {
-                    Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm  {0} change of state to {1}", alarmID, newState);
-                    _asdb.LogStateChange(alarmID, newState, alarmMessage, comments);
+                    Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm  {0} change of state to {1}", alarm.ID, alarm.State);
+                    _asdb.LogStateChange(alarm.ID, alarm.State, alarm.Message, comments);
                 }
                 catch (Exception e)
                 {
@@ -299,7 +307,7 @@ namespace BBAlarmsService
             }
 
             //turn buzzer on or off
-            if (_alarmManager.IsAlarmRaised) //if at least one alarm is on
+            if (_alarmManager.IsAlarmRaised) //if at least one alarm is on (or we are testing)
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Alarm is raised so turn master and pilot on");
                 _master.TurnOn(); //this prevents bypassing
@@ -325,7 +333,7 @@ namespace BBAlarmsService
 
             //finally we broadcast to any listeners
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Broadcast event to all listeners...");
-            Message alert = AlarmsMessageSchema.AlertAlarmStateChange(alarmID, newState, alarmMessage, testing, _buzzer, _pilot);
+            Message alert = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message, alarm.IsTesting, _buzzer, _pilot);
             Broadcast(alert);
         }
 
@@ -407,7 +415,8 @@ namespace BBAlarmsService
                     }
                     if (EnableAlarm(id, false))
                     {
-                        onAlarmStateChanged(id, AlarmState.DISABLED, null, String.Format("Command sent from {0}", message.Sender));
+                        alarm = _alarmManager.GetAlarm(id);
+                        onAlarmStateChanged(alarm, String.Format("Command sent from {0}", message.Sender));
                         response.Value = String.Format("Alarm {0} disabled", id);
                     } else
                     {
@@ -421,7 +430,8 @@ namespace BBAlarmsService
                     if (!_alarmManager.HasAlarm(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
                     if (EnableAlarm(id, true))
                     {
-                        onAlarmStateChanged(id, AlarmState.OFF, null, String.Format("Command sent from {0}", message.Sender));
+                        alarm = _alarmManager.GetAlarm(id);
+                        onAlarmStateChanged(alarm, String.Format("Command sent from {0}", message.Sender));
                         response.Value = String.Format("Alarm {0} enabled", id);
                     } else
                     {
@@ -490,7 +500,7 @@ namespace BBAlarmsService
         private void StartTest(AlarmTest test, String alarmID, AlarmState alarmState = AlarmState.OFF, int testSecs = 5)
         {
             if (IsTesting) throw new Exception(String.Format("Cannot run test already testing {0}", _currentTest));
-            if (_alarmManager.IsAlarmRaised) throw new Exception("Cannot test any alarm while an alarm is already on");
+            if (_alarmManager.IsAlarmRaised) throw new Exception("Cannot test any alarm if at least one alarm is already on");
 
             _currentTest = test;
             switch (_currentTest)
@@ -505,8 +515,9 @@ namespace BBAlarmsService
                         alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
                     }
 
-                    String msg = String.Format("Start alarm test on {0}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                    onAlarmStateChanged(alarmID, alarmState, msg, "Start alarm test", true);
+                    var alarm = _alarmManager.GetAlarm(alarmID);
+                    String msg = String.Format("Start alarm test on {0} for {1} secs", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), testSecs);
+                    alarm.StartTest(alarmState, msg);
                     break;
 
                 case AlarmTest.BUZZER:
@@ -538,16 +549,8 @@ namespace BBAlarmsService
                 case AlarmTest.ALARM:
                     var alarmID = _testingAlarmID;
                     _testingAlarmID = null;
-                    String logMsg;
-                    if (sender is String && sender != null)
-                    {
-                        logMsg = sender.ToString();
-                    }
-                    else
-                    {
-                        logMsg = "End alarm test after timeout";
-                    }
-                    onAlarmStateChanged(alarmID, AlarmState.OFF, null, logMsg, true);
+                    var alarm = _alarmManager.GetAlarm(alarmID);
+                    alarm.EndTest();
                     break;
 
                 case AlarmTest.BUZZER:

@@ -13,6 +13,8 @@ namespace BBAlarmsService
         {
             AlarmManager AlarmManager { get; set; }
 
+            void RegisterAlarms();
+
             void RequestUpdateAlarms();
         }
 
@@ -48,7 +50,12 @@ namespace BBAlarmsService
                 }
             }
 
-            
+            public IAlarmRaiser Raiser { get; set; }
+
+            public bool Testing { get; internal set; } = false;
+
+            public bool IsTesting => Testing;
+
             public bool IsLowered => State == AlarmState.OFF;
 
             public bool IsDisabled => State == AlarmState.DISABLED;
@@ -64,6 +71,7 @@ namespace BBAlarmsService
 
             public DateTime LastDisabled { get; set; }
 
+            
             public bool HasChangedState => _prevState != _state;
 
             public Alarm(String alarmID)
@@ -88,6 +96,28 @@ namespace BBAlarmsService
             {
                 Enable(false);
             }
+
+            public void StartTest(AlarmState state, String msg = "Start testing")
+            {
+                Testing = true;
+                Raise(state, msg);
+            }
+
+            public void EndTest(String msg = "End testing")
+            {
+                Lower(msg);
+                Testing = false;
+            }
+
+            public void Raise(AlarmState state, String message)
+            {
+                Raiser.AlarmManager.Raise(ID, state, message);
+            }
+
+            public void Lower(String message)
+            {
+                Raiser.AlarmManager.Lower(ID, message);
+            }
         }
 
         public event EventHandler<Alarm> AlarmStateChanged;
@@ -104,7 +134,7 @@ namespace BBAlarmsService
         }
 
 
-        public Alarm AddAlarm(String alarmID, String alarmName = null)
+        public Alarm RegisterAlarm(IAlarmRaiser raiser, String alarmID, String alarmName = null)
         {
             if (_alarms.ContainsKey(alarmID))
             {
@@ -112,6 +142,7 @@ namespace BBAlarmsService
             }
 
             Alarm alarm = new Alarm(alarmID);
+            alarm.Raiser = raiser;
             alarm.Name = alarmName;
 
             _alarms[alarmID] = alarm;
@@ -124,6 +155,7 @@ namespace BBAlarmsService
             {
                 AlarmRaisers.Add(raiser);
                 raiser.AlarmManager = this;
+                raiser.RegisterAlarms();
             }
         }
 
@@ -165,7 +197,7 @@ namespace BBAlarmsService
             Alarm alarm;
             if (!_alarms.ContainsKey(alarmID))
             {
-                alarm = AddAlarm(alarmID);
+                throw new Exception(String.Format("Alarm {0} has not been registered", alarmID));
             } else
             {
                 alarm =_alarms[alarmID];
@@ -173,7 +205,7 @@ namespace BBAlarmsService
 
             alarm.State = alarmState;
             alarm.Message = alarmMessage;
-
+            
             if(AlarmStateChanged != null && alarm.HasChangedState)
             {
                 AlarmStateChanged.Invoke(this, alarm);
