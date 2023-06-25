@@ -93,7 +93,7 @@ namespace BBAlarmsService
 
             public void RequestUpdateAlarms()
             {
-                _alarmsService.SendCommand(Sender, AlarmsMessageSchema.COMMAND_ALARM_STATUS);
+                _alarmsService.SendCommand(Sender, AlarmsMessageSchema.COMMAND_ALARM_STATUS, _alarmID);
             }
         }
 
@@ -204,7 +204,13 @@ namespace BBAlarmsService
 
             if (_master != null)
             {
-                _master.TurnOff();
+                try
+                {
+                    _master.TurnOff();
+                } catch (Exception e)
+                {
+                    Tracing?.TraceEvent(TraceEventType.Error, 3110, e.Message);
+                }
             }
             base.OnStop();
         }
@@ -213,15 +219,15 @@ namespace BBAlarmsService
         {
 
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding ADM and devices...");
-            if (_adm == null)
-            {
+            //if (_adm == null)
+            //{
                 _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_ARDUINO, 115200, 64, 64);
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Created USB connected ADM {0}", _adm.UID);
-            }
+            /*}
             else
             {
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Use supplied ADM {0}", _adm.UID);
-            }
+            }*/
 
             _pilot = new SwitchDevice("pilot", SwitchDevice.SwitchMode.ACTIVE, PILOT_LIGHT_PIN);
             _adm.AddDevice(_pilot);
