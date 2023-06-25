@@ -122,15 +122,13 @@ namespace BBAlarmsService
 
         public event EventHandler<Alarm> AlarmStateChanged;
 
-        private ChetchMessagingClient _messagingService;
-
         public List<IAlarmRaiser> AlarmRaisers { get; internal set; } = new List<IAlarmRaiser>();
         private Dictionary<String, Alarm> _alarms = new Dictionary<String, Alarm>();
         
         public List<Alarm> Alarms { get => _alarms.Values.ToList();  }
-        public AlarmManager(ChetchMessagingClient messagingService = null)
+        public AlarmManager()
         {
-            _messagingService = messagingService;
+            
         }
 
 
@@ -253,10 +251,10 @@ namespace BBAlarmsService
             }
         }
         
-        public void NotifyAlarmsService(IAlarmRaiser alarmRaiser = null)
+        public void NotifyAlarmsService(ChetchMessagingClient cmc, Alarm alarm)
         {
-            //var message = AlarmsMessageSchema.AlertAlarmStateChange
-            //_messagingService.Broadcast(message);
+            var message = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message);
+            cmc.SendMessage(message);
         }
 
     }
