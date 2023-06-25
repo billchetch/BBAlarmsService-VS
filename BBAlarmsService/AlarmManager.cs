@@ -160,6 +160,17 @@ namespace BBAlarmsService
         }
 
 
+        public void AddRaisers(IEnumerable<Object> items)
+        {
+            foreach(var item in items)
+            {
+                if(item is IAlarmRaiser)
+                {
+                    AddRaiser((IAlarmRaiser)item);
+                }
+            }
+        }
+
         public Alarm GetAlarm(String id)
         {
             return _alarms.ContainsKey(id) ? _alarms[id] : null;
