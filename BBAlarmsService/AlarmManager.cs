@@ -169,8 +169,12 @@ namespace BBAlarmsService
             }
         }
 
-        public Alarm GetAlarm(String id)
+        public Alarm GetAlarm(String id, bool throwException = false)
         {
+            if(throwException && !_alarms.ContainsKey(id))
+            {
+                throw new Exception(String.Format("Alarm {0} not found", id));
+            }
             return _alarms.ContainsKey(id) ? _alarms[id] : null;
         }
 
@@ -243,11 +247,23 @@ namespace BBAlarmsService
             return UpdateAlarm(alarmID, AlarmState.DISABLED, null);
         }
 
-        public void RequestUpdateAlarms()
+        public void RequestUpdateAlarms(String alarmID = null)
         {
-            foreach(var raiser in AlarmRaisers)
+            if (alarmID != null)
             {
-                raiser.RequestUpdateAlarms();
+                var alarm = GetAlarm(alarmID, true); //throws exception
+                if(alarm.Raiser == null)
+                {
+                    throw new Exception(String.Format("Alarm {0} does not have a raiser", alarmID));
+                }
+                alarm.Raiser.RequestUpdateAlarms();
+            }
+            else
+            {
+                foreach (var raiser in AlarmRaisers)
+                {
+                    raiser.RequestUpdateAlarms();
+                }
             }
         }
         
