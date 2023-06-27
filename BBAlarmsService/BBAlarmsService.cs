@@ -283,6 +283,10 @@ namespace BBAlarmsService
             AddCommandHelp(AlarmsMessageSchema.COMMAND_MASTER, "Turn master <on/off>");
         }
 
+        public override void Test(string[] args = null)
+        {
+            base.Test(args);
+        }
 
         private void onAlarmStateChanged(AlarmManager.Alarm alarm, String comments = "") //String alarmID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
         {
