@@ -64,8 +64,6 @@ namespace BBAlarmsService
 
         class RemoteAlarm : MessageFilter, AlarmManager.IAlarmRaiser
         {
-            private ChetchMessagingClient _alarmsService;
-
             private String _alarmID;
             
             public AlarmManager AlarmManager { get; set; }
@@ -76,9 +74,8 @@ namespace BBAlarmsService
 
             private AlarmsMessageSchema _schema = new AlarmsMessageSchema();
 
-            public RemoteAlarm(ChetchMessagingClient alarmsService, String alarmID, String clientName) : base(clientName, Chetch.Messaging.MessageType.ALERT, "AlarmID", alarmID)
+            public RemoteAlarm(String alarmID, String clientName) : base(clientName, Chetch.Messaging.MessageType.ALERT, "AlarmID", alarmID)
             {
-                _alarmsService = alarmsService;
                 _alarmID = alarmID;
             }
 
@@ -100,10 +97,6 @@ namespace BBAlarmsService
                 AlarmManager.RegisterAlarm(this, _alarmID);
             }
 
-            public void RequestUpdateAlarms()
-            {
-                _alarmsService.SendCommand(Sender, AlarmsMessageSchema.COMMAND_ALARM_STATUS, _alarmID);
-            }
         }
 
         public const int UPDATE_ALARM_STATES_INTERVAL = 30 * 1000;
@@ -113,6 +106,7 @@ namespace BBAlarmsService
         public const int MASTER_PIN = 7;
 
         private AlarmManager _alarmManager;
+        private List<String> _alarmSources = new List<String>();
 
         private ArduinoDeviceManager _adm;
         public ArduinoDeviceManager ADM
@@ -174,8 +168,12 @@ namespace BBAlarmsService
                     else
                     {
                         //The alarm is remote so we need to subscribe to the remote service and listen
-                        raiser = new RemoteAlarm(this, alarmID, source);
+                        raiser = new RemoteAlarm(alarmID, source);
                         Subscribe((MessageFilter)raiser);
+                        if (!_alarmSources.Contains(source))
+                        {
+                            _alarmSources.Add(source);
+                        }
                     }
                     _alarmManager.AddRaiser(raiser);
                     var alarm = _alarmManager.GetAlarm(alarmID);
@@ -193,7 +191,7 @@ namespace BBAlarmsService
                 //Started at end of CreateADM (which is called after Client is connected)
                 _updateAlarmStatesTimer = new System.Timers.Timer();
                 _updateAlarmStatesTimer.Interval = UPDATE_ALARM_STATES_INTERVAL;
-                _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(RequestAlarmStates);
+                _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(RequestAlarmStatus);
 
                 //triggered by calling  a test
                 _testAlarmTimer = new System.Timers.Timer();
@@ -495,9 +493,12 @@ namespace BBAlarmsService
             }
         }
 
-        private void RequestAlarmStates(Object sender, System.Timers.ElapsedEventArgs ea)
+        private void RequestAlarmStatus(Object sender, System.Timers.ElapsedEventArgs ea)
         {
-            _alarmManager.RequestUpdateAlarms();
+            foreach(var source in _alarmSources)
+            {
+                SendCommand(source, AlarmsMessageSchema.COMMAND_ALARM_STATUS);
+            }
         }
 
         //testing
@@ -519,9 +520,8 @@ namespace BBAlarmsService
                         alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
                     }
 
-                    var alarm = _alarmManager.GetAlarm(alarmID);
                     String msg = String.Format("Start alarm test on {0} for {1} secs", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), testSecs);
-                    alarm.StartTest(alarmState, msg);
+                    _alarmManager.StartTest(alarmID, alarmState, msg);
                     break;
 
                 case AlarmTest.BUZZER:
@@ -553,8 +553,7 @@ namespace BBAlarmsService
                 case AlarmTest.ALARM:
                     var alarmID = _testingAlarmID;
                     _testingAlarmID = null;
-                    var alarm = _alarmManager.GetAlarm(alarmID);
-                    alarm.EndTest();
+                    _alarmManager.EndTest(alarmID);
                     break;
 
                 case AlarmTest.BUZZER:

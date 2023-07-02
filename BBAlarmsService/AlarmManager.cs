@@ -14,8 +14,6 @@ namespace BBAlarmsService
             AlarmManager AlarmManager { get; set; }
 
             void RegisterAlarms();
-
-            void RequestUpdateAlarms();
         }
 
         public class Alarm
@@ -134,11 +132,21 @@ namespace BBAlarmsService
 
         public Alarm RegisterAlarm(IAlarmRaiser raiser, String alarmID, String alarmName = null)
         {
+            if (raiser == null)
+            {
+                throw new ArgumentNullException("Raiser cannot be null");
+            }
+
+            if (alarmID == null)
+            {
+                throw new ArgumentNullException("Alarm ID cannot be null");
+            }
+
             if (_alarms.ContainsKey(alarmID))
             {
                 throw new Exception(String.Format("There is already an alarm with ID {0}", alarmID));
             }
-
+            
             Alarm alarm = new Alarm(alarmID);
             alarm.Raiser = raiser;
             alarm.Name = alarmName;
@@ -247,30 +255,40 @@ namespace BBAlarmsService
             return UpdateAlarm(alarmID, AlarmState.DISABLED, null);
         }
 
-        public void RequestUpdateAlarms(String alarmID = null)
+        public Alarm StartTest(String alarmID, AlarmState alarmState, String alarmMessage)
         {
-            if (alarmID != null)
+            var alarm = GetAlarm(alarmID);
+            if (alarm.IsRaised)
             {
-                var alarm = GetAlarm(alarmID, true); //throws exception
-                if(alarm.Raiser == null)
+                throw new Exception(String.Format("Alarm {0} already raised", alarmID));
+            }
+            alarm.StartTest(alarmState, alarmMessage);
+            return alarm;
+        }
+
+        public Alarm EndTest(String alarmID)
+        {
+            var alarm = GetAlarm(alarmID);
+            alarm.EndTest();
+            return alarm;
+        }
+
+        
+        public void NotifyAlarmsService(ChetchMessagingClient cmc, Alarm alarm = null)
+        {
+            if (alarm == null)
+            {
+                foreach(var a in _alarms.Values)
                 {
-                    throw new Exception(String.Format("Alarm {0} does not have a raiser", alarmID));
+                    NotifyAlarmsService(cmc, a);
                 }
-                alarm.Raiser.RequestUpdateAlarms();
             }
             else
             {
-                foreach (var raiser in AlarmRaisers)
-                {
-                    raiser.RequestUpdateAlarms();
-                }
+                var message = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message);
+                message.Target = AlarmsMessageSchema.ALARMS_SERVICE_NAME;
+                cmc.SendMessage(message);
             }
-        }
-        
-        public void NotifyAlarmsService(ChetchMessagingClient cmc, Alarm alarm)
-        {
-            var message = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message);
-            cmc.SendMessage(message);
         }
 
     }
