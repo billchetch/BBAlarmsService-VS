@@ -25,12 +25,12 @@ namespace BBAlarmsService
 
             private AlarmState _state = AlarmState.OFF;
             private AlarmState _prevState = AlarmState.OFF;
-            public AlarmState State 
+            public AlarmState State
             {
                 get
                 {
                     return _state;
-                } 
+                }
                 set
                 {
                     _prevState = _state;
@@ -69,7 +69,7 @@ namespace BBAlarmsService
 
             public DateTime LastDisabled { get; set; }
 
-            
+
             public bool HasChangedState => _prevState != _state;
 
             public Alarm(String alarmID)
@@ -82,7 +82,7 @@ namespace BBAlarmsService
                 if (enable) {
                     if (State == AlarmState.DISABLED)
                     {
-                        State =AlarmState.OFF;
+                        State = AlarmState.OFF;
                     }
                 } else
                 {
@@ -122,8 +122,23 @@ namespace BBAlarmsService
 
         public List<IAlarmRaiser> AlarmRaisers { get; internal set; } = new List<IAlarmRaiser>();
         private Dictionary<String, Alarm> _alarms = new Dictionary<String, Alarm>();
-        
-        public List<Alarm> Alarms { get => _alarms.Values.ToList();  }
+
+        public List<Alarm> Alarms { get => _alarms.Values.ToList(); }
+
+        public Dictionary<String, AlarmState> AlarmStates
+        {
+            get
+            {
+                Dictionary<String, AlarmState> alarmStates = new Dictionary<string, AlarmState>();
+
+                foreach(var a in Alarms)
+                {
+                    alarmStates[a.ID] = a.State;
+                }
+                return alarmStates;
+            }
+        }
+
         public AlarmManager()
         {
             

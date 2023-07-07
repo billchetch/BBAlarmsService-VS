@@ -137,7 +137,7 @@ namespace BBAlarmsService
         {
             try
             {
-                AboutSummary = "BB Alarms Service v. 1.0.2";
+                AboutSummary = "BB Alarms Service v. 1.0.3";
 
                 Tracing?.TraceEvent(TraceEventType.Information, 0, "Connecting to Alarms database...");
                 _asdb = AlarmsServiceDB.Create(Properties.Settings.Default, "AlarmsDBName");
@@ -380,7 +380,7 @@ namespace BBAlarmsService
                     }
                     else
                     {
-                        throw new Exception("Please provide an alarm ID");
+                        schema.AddAlarmStatus(_alarmManager.AlarmStates, _buzzer, _pilot, IsTesting);
                     }
                     return true;
 
