@@ -228,8 +228,7 @@ namespace BBAlarmsService
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding ADM and devices...");
             //if (_adm == null)
             //{
-            //_adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_ARDUINO, 115200, 64, 64);
-            _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.USB_SERIAL_DEVICE, 115200, 64, 64);
+            _adm = ArduinoDeviceManager.Create(ArduinoSerialConnection.BOARD_ARDUINO, 115200, 64, 64);
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Created USB connected ADM {0}", _adm.UID);
             /*}
             else
