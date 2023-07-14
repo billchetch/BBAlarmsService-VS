@@ -33,6 +33,16 @@ namespace BBAlarmsService
                 }
                 set
                 {
+                    //do some state checking here
+                    if(IsDisabled && value != AlarmState.OFF)
+                    {
+                        throw new Exception(String.Format("Alarm {0} is disabled cannot set state directly to {1}", ID, value));
+                    }
+                    if(value ==AlarmState.DISABLED && !CanDisable)
+                    {
+                        throw new Exception(String.Format("Alarm {0} cannot be disabled", ID));
+                    }
+
                     _prevState = _state;
                     _state = value;
                     if (IsRaised)
@@ -60,6 +70,7 @@ namespace BBAlarmsService
 
             public bool IsRaised => !IsLowered && !IsDisabled;
 
+            public bool CanDisable { get; set; } = true;
 
             public String Message { get; set; }
 
@@ -77,22 +88,10 @@ namespace BBAlarmsService
                 ID = alarmID;
             }
 
-            public void Enable(bool enable = true)
+            public void Update(AlarmState state, String message = null)
             {
-                if (enable) {
-                    if (State == AlarmState.DISABLED)
-                    {
-                        State = AlarmState.OFF;
-                    }
-                } else
-                {
-                    State = AlarmState.DISABLED;
-                }
-            }
-
-            public void Disable()
-            {
-                Enable(false);
+                State = state;
+                Message = message;
             }
 
             public void StartTest(AlarmState state, String msg = "Start testing")
@@ -109,12 +108,36 @@ namespace BBAlarmsService
 
             public void Raise(AlarmState state, String message)
             {
-                Raiser.AlarmManager.Raise(ID, state, message);
+                if (state == AlarmState.OFF || state == AlarmState.DISABLED)
+                {
+                    throw new ArgumentException(String.Format("Alarm state {0} is not valid for raising an alarm", state));
+                }
+                Update(state, message);
             }
 
             public void Lower(String message)
             {
-                Raiser.AlarmManager.Lower(ID, message);
+                Update(AlarmState.OFF, message);
+            }
+
+            public void Enable(bool enable = true)
+            {
+                if (enable)
+                {
+                    if (State == AlarmState.DISABLED)
+                    {
+                        Update(AlarmState.OFF);
+                    }
+                }
+                else if(State != AlarmState.DISABLED)
+                {
+                    Update(AlarmState.DISABLED);
+                }
+            }
+
+            public void Disable()
+            {
+                Enable(false);
             }
         }
 
@@ -136,6 +159,19 @@ namespace BBAlarmsService
                     alarmStates[a.ID] = a.State;
                 }
                 return alarmStates;
+            }
+        }
+
+
+        public bool IsAlarmRaised
+        {
+            get
+            {
+                foreach (Alarm a in _alarms.Values)
+                {
+                    if (a.IsRaised) return true;
+                }
+                return false;
             }
         }
 
@@ -216,32 +252,19 @@ namespace BBAlarmsService
             return false;
         }
 
-        public bool IsAlarmRaised
+        
+
+        public bool IsAlarmDisabled(String alarmID)
         {
-            get
-            {
-                foreach (Alarm a in _alarms.Values)
-                {
-                    if (a.IsRaised) return true;
-                }
-                return false;
-            }
+            Alarm alarm = GetAlarm(alarmID, true);
+            return alarm.IsDisabled;
         }
 
         public Alarm UpdateAlarm(String alarmID, AlarmState alarmState, String alarmMessage)
         {
-            Alarm alarm;
-            if (!_alarms.ContainsKey(alarmID))
-            {
-                throw new Exception(String.Format("Alarm {0} has not been registered", alarmID));
-            } else
-            {
-                alarm =_alarms[alarmID];
-            }
+            Alarm alarm = GetAlarm(alarmID, true);
+            alarm.Update(alarmState, alarmMessage);
 
-            alarm.State = alarmState;
-            alarm.Message = alarmMessage;
-            
             if(AlarmStateChanged != null && alarm.HasChangedState)
             {
                 AlarmStateChanged.Invoke(this, alarm);
@@ -272,19 +295,29 @@ namespace BBAlarmsService
 
         public Alarm StartTest(String alarmID, AlarmState alarmState, String alarmMessage)
         {
-            var alarm = GetAlarm(alarmID);
+            var alarm = GetAlarm(alarmID, true);
             if (alarm.IsRaised)
             {
                 throw new Exception(String.Format("Alarm {0} already raised", alarmID));
             }
             alarm.StartTest(alarmState, alarmMessage);
+
+            if (AlarmStateChanged != null && alarm.HasChangedState)
+            {
+                AlarmStateChanged.Invoke(this, alarm);
+            }
             return alarm;
         }
 
         public Alarm EndTest(String alarmID)
         {
-            var alarm = GetAlarm(alarmID);
+            var alarm = GetAlarm(alarmID, true);
             alarm.EndTest();
+
+            if (AlarmStateChanged != null && alarm.HasChangedState)
+            {
+                AlarmStateChanged.Invoke(this, alarm);
+            }
             return alarm;
         }
 

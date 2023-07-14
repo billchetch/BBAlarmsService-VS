@@ -31,17 +31,22 @@ namespace BBAlarmsService
                 AlarmSwitch = new SwitchDevice(alarmID, SwitchDevice.SwitchMode.PASSIVE, pin, tolerance);
                 AlarmSwitch.Switched += (Object sender, SwitchDevice.SwitchPosition newPosition) =>
                 {
+                    if (AlarmManager.IsAlarmDisabled(AlarmID))
+                    {
+                        return;
+                    }
+
                     if (!AlarmSwitch.Enabled)
                     {
                         AlarmManager.Disable(AlarmID);
                     }
                     else if (AlarmSwitch.IsOn)
                     {
-                        AlarmManager.Raise(AlarmID, AlarmState.CRITICAL, "Holy moly");
+                        AlarmManager.Raise(AlarmID, AlarmState.CRITICAL, String.Format("{0} alarm has been raised", AlarmName));
                     }
                     else if (AlarmSwitch.IsOff)
                     {
-                        AlarmManager.Lower(AlarmID, "Back to normal");
+                        AlarmManager.Lower(AlarmID, String.Format("{0} alarm has been lowered", AlarmName));
                     }
                 };
             }
@@ -82,7 +87,11 @@ namespace BBAlarmsService
             
             protected override void OnMatched(Message message)
             {
-                
+                if (AlarmManager.IsAlarmDisabled(_alarmID))
+                {
+                    return;
+                }
+
                 _schema.Message = message;
                 _alarmState = _schema.GetAlarmState();
                 _alarmMessage = _schema.GetAlarmMessage();
@@ -155,6 +164,7 @@ namespace BBAlarmsService
                     String source = row.GetString("alarm_source");
                     String alarmID = row.GetString("alarm_id");
                     String alarmName = row.GetString("alarm_name");
+                    bool canDisable = row.GetAsBool("can_disable");
                     
                     AlarmManager.IAlarmRaiser raiser;
                     if (String.IsNullOrEmpty(source)) //means local
@@ -181,6 +191,7 @@ namespace BBAlarmsService
                     alarm.LastRaised = row.GetDateTime("last_raised");
                     alarm.LastLowered = row.GetDateTime("last_lowered");
                     alarm.LastDisabled = row.GetDateTime("last_disabled");
+                    alarm.CanDisable = canDisable;
                 }
 
                 _alarmManager.AlarmStateChanged += (Object sender, AlarmManager.Alarm alarm) =>
@@ -281,6 +292,10 @@ namespace BBAlarmsService
             AddCommandHelp(AlarmsMessageSchema.COMMAND_MASTER, "Turn master <on/off>");
         }
 
+        /// <summary>
+        /// Use this method to run various tests during dev
+        /// </summary>
+        /// <param name="args"></param>
         public override void Test(string[] args = null)
         {
             base.Test(args);
