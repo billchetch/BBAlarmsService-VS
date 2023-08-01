@@ -70,6 +70,8 @@ namespace BBAlarmsService
         class RemoteAlarm : MessageFilter, AlarmManager.IAlarmRaiser
         {
             private String _alarmID;
+
+            public String AlarmID => _alarmID;
             
             public AlarmManager AlarmManager { get; set; }
 
@@ -365,6 +367,29 @@ namespace BBAlarmsService
             } else
             {
                 return false;
+            }
+        }
+
+        public override void HandleClientMessage(Connection cnn, Message message)
+        {
+            base.HandleClientMessage(cnn, message);
+
+            
+            switch (message.Type)
+            {
+                case MessageType.NOTIFICATION:
+                    if(message.SubType == (int)Server.NotificationEvent.CLIENT_CLOSED)
+                    {
+                        foreach(var sub in Subscriptions)
+                        {
+                            if(sub is RemoteAlarm && sub.Sender == message.Sender)
+                            {
+                                var ra = (RemoteAlarm)sub;
+                                _alarmManager.Lower(ra.AlarmID, String.Format("Lowering alarm as client {0} has disconnected", cnn.Name));
+                            }
+                        }
+                    }
+                    break;
             }
         }
 

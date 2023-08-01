@@ -38,7 +38,7 @@ namespace BBAlarmsService
                     {
                         throw new Exception(String.Format("Alarm {0} is disabled cannot set state directly to {1}", ID, value));
                     }
-                    if(value ==AlarmState.DISABLED && !CanDisable)
+                    if(value == AlarmState.DISABLED && !CanDisable)
                     {
                         throw new Exception(String.Format("Alarm {0} cannot be disabled", ID));
                     }
@@ -206,6 +206,12 @@ namespace BBAlarmsService
             return alarm;
         }
 
+        public void DeregisterAlarm(String alarmID)
+        {
+            Lower(alarmID, "Deregistering alarm {0}");
+            _alarms.Remove(alarmID);
+        }
+
         public void AddRaiser(IAlarmRaiser raiser)
         {
             if (!AlarmRaisers.Contains(raiser))
@@ -226,6 +232,17 @@ namespace BBAlarmsService
                     AddRaiser((IAlarmRaiser)item);
                 }
             }
+        }
+
+        public void RemoveRaisers()
+        {
+            var alarms2remove = _alarms.Keys.ToList();
+            foreach(var alarmID in alarms2remove)
+            {
+                //Deregister will Lower the larm first
+                DeregisterAlarm(alarmID);
+            }
+            AlarmRaisers.Clear();
         }
 
         public Alarm GetAlarm(String id, bool throwException = false)
