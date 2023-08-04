@@ -235,7 +235,7 @@ namespace BBAlarmsService
             base.OnStop();
         }
 
-        protected override bool CreateADMs()
+        protected override void CreateADMs()
         {
 
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Adding ADM and devices...");
@@ -273,8 +273,6 @@ namespace BBAlarmsService
 
             //now start the update alarms timer
             _updateAlarmStatesTimer.Start();
-
-            return true;
         }
 
         public override void AddCommandHelp()
