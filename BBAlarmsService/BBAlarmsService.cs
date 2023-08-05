@@ -194,6 +194,8 @@ namespace BBAlarmsService
                     alarm.LastLowered = row.GetDateTime("last_lowered");
                     alarm.LastDisabled = row.GetDateTime("last_disabled");
                     alarm.CanDisable = canDisable;
+                    bool enabled = row.GetAsBool("enabled");
+                    alarm.Enable(enabled);
                 }
 
                 _alarmManager.AlarmStateChanged += (Object sender, AlarmManager.Alarm alarm) =>
@@ -361,6 +363,7 @@ namespace BBAlarmsService
             if(alarm != null)
             {
                 alarm.Enable(enable);
+                _asdb.EnableAlarm(id, enable);
                 return true;
             } else
             {

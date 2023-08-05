@@ -128,5 +128,13 @@ namespace BBAlarmsService
 
             return Insert("alarm_log", newRow);
         }
+
+        public void EnableAlarm(String alarmID, bool enable)
+        {
+            Dictionary<String, Object> vals = new Dictionary<String, Object>();
+            vals["enabled"] = enable ? 1 : 0;
+            String filter = String.Format("alarm_id='{0}'", alarmID);
+            Update("alarms", vals, filter);
+        }
     }
 }
