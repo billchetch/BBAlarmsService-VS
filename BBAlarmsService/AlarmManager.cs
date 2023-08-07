@@ -292,6 +292,7 @@ namespace BBAlarmsService
         
         public Alarm Raise(String alarmID, AlarmState alarmState, String alarmMessage)
         {
+            //Check this is a 'raising' alarm state
             if(alarmState == AlarmState.OFF || alarmState == AlarmState.DISABLED)
             {
                 throw new ArgumentException(String.Format("Alarm state {0} is not valid for raising an alarm", alarmState));
@@ -303,6 +304,11 @@ namespace BBAlarmsService
         public Alarm Lower(String alarmID, String alarmMessage)
         {
             return UpdateAlarm(alarmID, AlarmState.OFF, alarmMessage);
+        }
+
+        public Alarm Enable(String alarmID)
+        {
+            return UpdateAlarm(alarmID, AlarmState.OFF, null);
         }
 
         public Alarm Disable(String alarmID)

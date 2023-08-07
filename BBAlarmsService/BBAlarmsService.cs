@@ -356,20 +356,6 @@ namespace BBAlarmsService
             Broadcast(alert);
         }
 
-        private bool EnableAlarm(String id, bool enable)
-        {
-            //search local alarms
-            var alarm = _alarmManager.GetAlarm(id);
-            if(alarm != null)
-            {
-                alarm.Enable(enable);
-                _asdb.EnableAlarm(id, enable);
-                return true;
-            } else
-            {
-                return false;
-            }
-        }
 
         public override void HandleClientMessage(Connection cnn, Message message)
         {
@@ -386,7 +372,10 @@ namespace BBAlarmsService
                             if(sub is RemoteAlarm && sub.Sender == message.Sender)
                             {
                                 var ra = (RemoteAlarm)sub;
-                                _alarmManager.Lower(ra.AlarmID, String.Format("Lowering alarm as client {0} has disconnected", cnn.Name));
+                                if (!_alarmManager.IsAlarmDisabled(ra.AlarmID))
+                                {
+                                    _alarmManager.Lower(ra.AlarmID, String.Format("Lowering alarm as client {0} has disconnected", cnn.Name));
+                                }
                             }
                         }
                     }
@@ -456,30 +445,17 @@ namespace BBAlarmsService
                     {
                         throw new Exception(String.Format("No alarm found with id {0}", id));
                     }
-                    if (EnableAlarm(id, false))
-                    {
-                        alarm = _alarmManager.GetAlarm(id);
-                        onAlarmStateChanged(alarm, String.Format("Command sent from {0}", message.Sender));
-                        response.Value = String.Format("Alarm {0} disabled", id);
-                    } else
-                    {
-                        response.Value = String.Format("Alarm {0} already disabled", id);
-                    }
+                    _alarmManager.Disable(id);
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_ENABLE_ALARM:
                     if (args.Count == 0) throw new Exception("No alarm specified to enable");
                     id = args[0].ToString();
-                    if (!_alarmManager.HasAlarm(id)) throw new Exception(String.Format("No alarm found with id {0}", id));
-                    if (EnableAlarm(id, true))
+                    if (!_alarmManager.HasAlarm(id))
                     {
-                        alarm = _alarmManager.GetAlarm(id);
-                        onAlarmStateChanged(alarm, String.Format("Command sent from {0}", message.Sender));
-                        response.Value = String.Format("Alarm {0} enabled", id);
-                    } else
-                    {
-                        response.Value = String.Format("Alaram {0} already enabled", id);
+                        throw new Exception(String.Format("No alarm found with id {0}", id));
                     }
+                    _alarmManager.Enable(id);
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_ALARM:
@@ -548,30 +524,38 @@ namespace BBAlarmsService
             if (IsTesting) throw new Exception(String.Format("Cannot run test already testing {0}", _currentTest));
             if (_alarmManager.IsAlarmRaised) throw new Exception("Cannot test any alarm if at least one alarm is already on");
 
-            _currentTest = test;
-            switch (_currentTest)
+            try
             {
-                case AlarmTest.ALARM:
-                    _testingAlarmID = alarmID;
+                _currentTest = test;
+                switch (_currentTest)
+                {
+                    case AlarmTest.ALARM:
+                        _testingAlarmID = alarmID;
 
-                    if (alarmState == AlarmState.OFF)
-                    {
-                        var rand = new Random();
-                        Array values = Enum.GetValues(typeof(AlarmState));
-                        alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
-                    }
+                        if (alarmState == AlarmState.OFF)
+                        {
+                            var rand = new Random();
+                            Array values = Enum.GetValues(typeof(AlarmState));
+                            alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
+                        }
 
-                    String msg = String.Format("Start alarm test on {0} for {1} secs", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), testSecs);
-                    _alarmManager.StartTest(alarmID, alarmState, msg);
-                    break;
+                        String msg = String.Format("Start alarm test on {0} for {1} secs", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), testSecs);
+                        _alarmManager.StartTest(alarmID, alarmState, msg);
+                        break;
 
-                case AlarmTest.BUZZER:
-                    _buzzer.TurnOn();
-                    break;
+                    case AlarmTest.BUZZER:
+                        _buzzer.TurnOn();
+                        break;
 
-                case AlarmTest.PILOT_LIGHT:
-                    _pilot.TurnOn();
-                    break;
+                    case AlarmTest.PILOT_LIGHT:
+                        _pilot.TurnOn();
+                        break;
+                }
+            } catch (Exception e)
+            {
+                //reset then throw
+                _currentTest = AlarmTest.NONE;
+                throw e;
             }
 
             
