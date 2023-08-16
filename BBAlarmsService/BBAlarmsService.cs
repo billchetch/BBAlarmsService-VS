@@ -357,6 +357,21 @@ namespace BBAlarmsService
         }
 
 
+        private void onAlarmSourceOffline(String source)
+        {
+            foreach (var sub in Subscriptions)
+            {
+                if (sub is RemoteAlarm && sub.Sender == source)
+                {
+                    var ra = (RemoteAlarm)sub;
+                    if (!_alarmManager.IsAlarmDisabled(ra.AlarmID))
+                    {
+                        _alarmManager.Lower(ra.AlarmID, String.Format("Lowering alarm as client {0} is offline", source));
+                    }
+                }
+            }
+        }
+
         public override void HandleClientMessage(Connection cnn, Message message)
         {
             base.HandleClientMessage(cnn, message);
@@ -364,20 +379,21 @@ namespace BBAlarmsService
             
             switch (message.Type)
             {
+                case MessageType.ERROR:
+                    if(message.SubType == (int)ErrorCode.CLIENT_NOT_CONNECTED)
+                    {
+                        String source = message.GetString("IntendedTarget");
+                        onAlarmSourceOffline(source);
+                    }
+                    break;
+
                 case MessageType.NOTIFICATION:
                     if(message.SubType == (int)Server.NotificationEvent.CLIENT_CLOSED)
                     {
-                        foreach(var sub in Subscriptions)
-                        {
-                            if(sub is RemoteAlarm && sub.Sender == message.Sender)
-                            {
-                                var ra = (RemoteAlarm)sub;
-                                if (!_alarmManager.IsAlarmDisabled(ra.AlarmID))
-                                {
-                                    _alarmManager.Lower(ra.AlarmID, String.Format("Lowering alarm as client {0} has disconnected", cnn.Name));
-                                }
-                            }
-                        }
+                        onAlarmSourceOffline(message.Sender);
+                    } else if(message.SubType == (int)Server.NotificationEvent.CLIENT_CONNECTED)
+                    {
+                        RequestAlarmStatus(null, null);
                     }
                     break;
             }
