@@ -462,6 +462,7 @@ namespace BBAlarmsService
                         throw new Exception(String.Format("No alarm found with id {0}", id));
                     }
                     _alarmManager.Disable(id);
+                    _asdb.DisableAlarm(id); //save to db for persistence
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_ENABLE_ALARM:
@@ -472,6 +473,7 @@ namespace BBAlarmsService
                         throw new Exception(String.Format("No alarm found with id {0}", id));
                     }
                     _alarmManager.Enable(id);
+                    _asdb.EnableAlarm(id); //save to db for persistence
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_ALARM:
