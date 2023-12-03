@@ -162,6 +162,20 @@ namespace BBAlarmsService
             }
         }
 
+        public Dictionary<String, String> AlarmMessages
+        {
+            get
+            {
+                Dictionary<String, String> alarmMessages = new Dictionary<string, String>();
+
+                foreach (var a in Alarms)
+                {
+                    alarmMessages[a.ID] = a.Message;
+                }
+                return alarmMessages;
+            }
+        }
+
 
         public bool IsAlarmRaised
         {
@@ -345,7 +359,7 @@ namespace BBAlarmsService
         }
 
         
-        public void NotifyAlarmsService(ChetchMessagingClient cmc, Alarm alarm = null)
+        public void NotifyAlarmsService(ChetchMessagingClient cmc, Alarm alarm = null, String target = AlarmsMessageSchema.ALARMS_SERVICE_NAME)
         {
             if (alarm == null)
             {
@@ -357,7 +371,7 @@ namespace BBAlarmsService
             else
             {
                 var message = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message);
-                message.Target = AlarmsMessageSchema.ALARMS_SERVICE_NAME;
+                message.Target = target;
                 cmc.SendMessage(message);
             }
         }

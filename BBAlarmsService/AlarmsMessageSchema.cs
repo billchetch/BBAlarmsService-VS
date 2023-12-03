@@ -106,17 +106,19 @@ namespace BBAlarmsService
             return Message.GetList<String>("Alarms");
         }
 
-        public void AddAlarmStatus(Dictionary<String, AlarmState> states, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
+        public void AddAlarmStatus(Dictionary<String, AlarmState> states, Dictionary<String, String> messages, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
         {
             AddAlarmStates(states);
+            AddAlarmMessages(messages);
             if(buzzer != null)AddBuzzer(buzzer);
             if(pilot != null)AddPilot(pilot);
             AddTesting(testing);
         }
 
-        public void AddAlarmStatus(AlarmState alarmState, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
+        public void AddAlarmStatus(AlarmState alarmState, String alarmMessage, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
         {
             Message.AddValue("AlarmState", alarmState);
+            Message.AddValue("AlarmMessage", alarmMessage);
             if (buzzer != null) AddBuzzer(buzzer);
             if (pilot != null) AddPilot(pilot);
             AddTesting(testing);
@@ -125,6 +127,11 @@ namespace BBAlarmsService
         public void AddAlarmStates(Dictionary<String, AlarmState> states)
         {
             Message.AddValue("AlarmStates", states);
+        }
+
+        public void AddAlarmMessages(Dictionary<String, String> messages)
+        {
+            Message.AddValue("AlarmMessages", messages);
         }
 
         public Dictionary<String, AlarmState> GetAlarmStates()

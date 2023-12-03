@@ -56,14 +56,12 @@ namespace BBAlarmsService
                 AlarmManager.RegisterAlarm(this, AlarmID, AlarmName);
             }
 
-            public void RequestUpdateAlarms()
+            public void RequestAlarmStatus()
             {
-                if (!AlarmSwitch.IsReady)
+                if (AlarmSwitch.IsReady)
                 {
-                    return;
+                    AlarmSwitch.RequestStatus();
                 }
-
-                AlarmSwitch.RequestStatus();
             }
         }
 
@@ -118,7 +116,7 @@ namespace BBAlarmsService
 
         private AlarmManager _alarmManager;
         private List<String> _alarmSources = new List<String>();
-
+        
         private ArduinoDeviceManager _adm;
         public ArduinoDeviceManager ADM
         {
@@ -206,7 +204,7 @@ namespace BBAlarmsService
                 //Started at end of CreateADM (which is called after Client is connected)
                 _updateAlarmStatesTimer = new System.Timers.Timer();
                 _updateAlarmStatesTimer.Interval = UPDATE_ALARM_STATES_INTERVAL;
-                _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(RequestAlarmStatus);
+                _updateAlarmStatesTimer.Elapsed += new System.Timers.ElapsedEventHandler(requestAlarmStatus);
 
                 //triggered by calling  a test
                 _testAlarmTimer = new System.Timers.Timer();
@@ -393,7 +391,7 @@ namespace BBAlarmsService
                         onAlarmSourceOffline(message.Sender);
                     } else if(message.SubType == (int)Server.NotificationEvent.CLIENT_CONNECTED)
                     {
-                        RequestAlarmStatus(null, null);
+                        requestAlarmStatus(null, null);
                     }
                     break;
             }
@@ -422,11 +420,11 @@ namespace BBAlarmsService
                         {
                             throw new Exception(String.Format("There is no alarm with ID {0}", id));
                         }
-                        schema.AddAlarmStatus(alarm.State, _buzzer, _pilot, IsTesting);
+                        schema.AddAlarmStatus(alarm.State, alarm.Message, _buzzer, _pilot, IsTesting);
                     }
                     else
                     {
-                        schema.AddAlarmStatus(_alarmManager.AlarmStates, _buzzer, _pilot, IsTesting);
+                        schema.AddAlarmStatus(_alarmManager.AlarmStates, _alarmManager.AlarmMessages, _buzzer, _pilot, IsTesting);
                     }
                     return true;
 
@@ -474,6 +472,7 @@ namespace BBAlarmsService
                     }
                     _alarmManager.Enable(id);
                     _asdb.EnableAlarm(id); //save to db for persistence
+                    requestAlarmStatus(id); //because it might be a remote alarm
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_ALARM:
@@ -528,11 +527,29 @@ namespace BBAlarmsService
             }
         }
 
-        private void RequestAlarmStatus(Object sender, System.Timers.ElapsedEventArgs ea)
+        private void requestAlarmStatus(Object sender, System.Timers.ElapsedEventArgs ea)
         {
             foreach(var source in _alarmSources)
             {
                 SendCommand(source, AlarmsMessageSchema.COMMAND_ALARM_STATUS);
+            }
+        }
+
+        private void requestAlarmStatus(String alarmID)
+        {
+            foreach(var raiser in _alarmManager.AlarmRaisers)
+            {
+                if(raiser is RemoteAlarm && ((RemoteAlarm)raiser).AlarmID == alarmID)
+                {
+                    var source = ((RemoteAlarm)raiser).Sender; //this is the source or client name cos it is who sends the message
+                    SendCommand(source, AlarmsMessageSchema.COMMAND_ALARM_STATUS, alarmID);
+                    break;
+                }
+                if(raiser is LocalAlarm && ((LocalAlarm)raiser).AlarmID == alarmID)
+                {
+                    ((LocalAlarm)raiser).RequestAlarmStatus();
+                    break;
+                }
             }
         }
 
