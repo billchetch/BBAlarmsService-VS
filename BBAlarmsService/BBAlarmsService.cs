@@ -77,6 +77,8 @@ namespace BBAlarmsService
 
             private String _alarmMessage;
 
+            private int _alarmCode = AlarmsMessageSchema.NO_CODE;
+
             private AlarmsMessageSchema _schema = new AlarmsMessageSchema();
 
             public RemoteAlarm(String alarmID, String clientName) : base(clientName, Chetch.Messaging.MessageType.ALERT, "AlarmID", alarmID)
@@ -95,10 +97,11 @@ namespace BBAlarmsService
                 _schema.Message = message;
                 _alarmState = _schema.GetAlarmState();
                 _alarmMessage = _schema.GetAlarmMessage();
+                _alarmCode = _schema.GetAlarmCode();
                 
                 base.OnMatched(message);
 
-                AlarmManager?.UpdateAlarm(_alarmID, _alarmState, _alarmMessage);
+                AlarmManager?.UpdateAlarm(_alarmID, _alarmState, _alarmMessage, _alarmCode);
             }
 
             public void RegisterAlarms()
@@ -196,9 +199,9 @@ namespace BBAlarmsService
                     alarm.Enable(enabled);
                 }
 
-                _alarmManager.AlarmStateChanged += (Object sender, AlarmManager.Alarm alarm) =>
+                _alarmManager.AlarmChanged += (Object sender, AlarmManager.Alarm alarm) =>
                 {
-                    onAlarmStateChanged(alarm); //.ID, alarm.State, alarm.Message);
+                    onAlarmChanged(alarm); //.ID, alarm.State, alarm.Message);
                 };
 
                 //Started at end of CreateADM (which is called after Client is connected)
@@ -301,7 +304,7 @@ namespace BBAlarmsService
             base.Test(args);
         }
 
-        private void onAlarmStateChanged(AlarmManager.Alarm alarm, String comments = "") //String alarmID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
+        private void onAlarmChanged(AlarmManager.Alarm alarm, String comments = "") //String alarmID, AlarmState newState, String alarmMessage = null, String comments = null, bool testing = false)
         {
             //if this is called while testing then we end the test as his takes priority
             if (IsTesting && !alarm.IsTesting)
@@ -314,8 +317,8 @@ namespace BBAlarmsService
             {
                 try
                 {
-                    Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm  {0} change of state to {1}", alarm.ID, alarm.State);
-                    _asdb.LogStateChange(alarm.ID, alarm.State, alarm.Message, comments);
+                    Tracing?.TraceEvent(TraceEventType.Information, 0, "Logging alarm  {0} change of state to {1}, code {2}", alarm.ID, alarm.State, alarm.Code);
+                    _asdb.LogChange(alarm.ID, alarm.State, alarm.Message, alarm.Code, comments);
                 }
                 catch (Exception e)
                 {
@@ -350,7 +353,7 @@ namespace BBAlarmsService
 
             //finally we broadcast to any listeners
             Tracing?.TraceEvent(TraceEventType.Information, 0, "Broadcast event to all listeners...");
-            Message alert = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message, alarm.IsTesting, _buzzer, _pilot);
+            Message alert = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message, alarm.Code, alarm.IsTesting, _buzzer, _pilot);
             Broadcast(alert);
         }
 
@@ -364,7 +367,7 @@ namespace BBAlarmsService
                     var ra = (RemoteAlarm)sub;
                     if (!_alarmManager.IsAlarmDisabled(ra.AlarmID))
                     {
-                        _alarmManager.Lower(ra.AlarmID, String.Format("Lowering alarm as client {0} is offline", source));
+                        _alarmManager.Lower(ra.AlarmID, String.Format("Lowering alarm as client {0} is offline", source), AlarmsMessageSchema.CODE_SOURCE_OFFLINE);
                     }
                 }
             }
@@ -420,11 +423,11 @@ namespace BBAlarmsService
                         {
                             throw new Exception(String.Format("There is no alarm with ID {0}", id));
                         }
-                        schema.AddAlarmStatus(alarm.State, alarm.Message, _buzzer, _pilot, IsTesting);
+                        schema.AddAlarmStatus(alarm.State, alarm.Message, alarm.Code, _buzzer, _pilot, IsTesting);
                     }
                     else
                     {
-                        schema.AddAlarmStatus(_alarmManager.AlarmStates, _alarmManager.AlarmMessages, _buzzer, _pilot, IsTesting);
+                        schema.AddAlarmStatus(_alarmManager.AlarmStates, _alarmManager.AlarmMessages, _alarmManager.AlarmCodes, _buzzer, _pilot, IsTesting);
                     }
                     return true;
 

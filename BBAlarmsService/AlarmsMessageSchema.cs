@@ -28,6 +28,7 @@ namespace BBAlarmsService
         PILOT_LIGHT
     }
 
+    
     public class AlarmsMessageSchema : ADMService.MessageSchema
     {
         public const String ALARMS_SERVICE_NAME = "BBAlarms";
@@ -46,16 +47,20 @@ namespace BBAlarmsService
         public const String COMMAND_LOWER_ALARM = "lower-alarm";
         public const String COMMAND_MASTER = "master";
 
+        public const int NO_CODE = 0;
+        public const int CODE_SOURCE_OFFLINE = 1;
+
 
         static private Dictionary<String, Message> _raisedAlarms = new Dictionary<String, Message>();
 
 
-        static public Message AlertAlarmStateChange(String alarmID, AlarmState alarmState, String alarmMessage, bool testing = false, Buzzer buzzer = null, Chetch.Arduino2.Devices.SwitchDevice pilot = null)
+        static public Message AlertAlarmStateChange(String alarmID, AlarmState alarmState, String alarmMessage, int alarmCode, bool testing = false, Buzzer buzzer = null, Chetch.Arduino2.Devices.SwitchDevice pilot = null)
         {
             Message msg = new Message(MessageType.ALERT);
             msg.AddValue("AlarmID", alarmID);
             msg.AddValue("AlarmState", alarmState);
             msg.AddValue("AlarmMessage", alarmMessage == null ? "n/a" : alarmMessage);
+            msg.AddValue("AlarmCode", alarmCode);
             msg.AddValue("Testing", testing);
 
             var schema = new AlarmsMessageSchema(msg);
@@ -106,19 +111,22 @@ namespace BBAlarmsService
             return Message.GetList<String>("Alarms");
         }
 
-        public void AddAlarmStatus(Dictionary<String, AlarmState> states, Dictionary<String, String> messages, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
+        public void AddAlarmStatus(Dictionary<String, AlarmState> states, Dictionary<String, String> messages, Dictionary<String, int> codes, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
         {
             AddAlarmStates(states);
             AddAlarmMessages(messages);
+            AddAlarmCodes(codes);
             if(buzzer != null)AddBuzzer(buzzer);
             if(pilot != null)AddPilot(pilot);
             AddTesting(testing);
         }
 
-        public void AddAlarmStatus(AlarmState alarmState, String alarmMessage, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
+        public void AddAlarmStatus(AlarmState alarmState, String alarmMessage, int alarmCode, Buzzer buzzer, SwitchDevice pilot, bool testing = false)
         {
             Message.AddValue("AlarmState", alarmState);
             Message.AddValue("AlarmMessage", alarmMessage);
+            Message.AddValue("AlarmCode", alarmCode);
+
             if (buzzer != null) AddBuzzer(buzzer);
             if (pilot != null) AddPilot(pilot);
             AddTesting(testing);
@@ -132,6 +140,11 @@ namespace BBAlarmsService
         public void AddAlarmMessages(Dictionary<String, String> messages)
         {
             Message.AddValue("AlarmMessages", messages);
+        }
+
+        public void AddAlarmCodes(Dictionary<String, int> codes)
+        {
+            Message.AddValue("AlarmCodes", codes);
         }
 
         public Dictionary<String, AlarmState> GetAlarmStates()
@@ -167,7 +180,11 @@ namespace BBAlarmsService
         {
             return Message.GetEnum<AlarmState>("AlarmState");
         }
-        
+        public int GetAlarmCode()
+        {
+            return Message.GetInt("AlarmCode");
+        }
+
         public void AddTesting(bool testing)
         {
             Message.AddValue("Testing", testing);

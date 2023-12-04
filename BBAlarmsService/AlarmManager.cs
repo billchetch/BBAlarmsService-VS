@@ -24,7 +24,6 @@ namespace BBAlarmsService
 
 
             private AlarmState _state = AlarmState.OFF;
-            private AlarmState _prevState = AlarmState.OFF;
             public AlarmState State
             {
                 get
@@ -43,7 +42,6 @@ namespace BBAlarmsService
                         throw new Exception(String.Format("Alarm {0} cannot be disabled", ID));
                     }
 
-                    _prevState = _state;
                     _state = value;
                     if (IsRaised)
                     {
@@ -74,6 +72,8 @@ namespace BBAlarmsService
 
             public String Message { get; set; }
 
+            public int Code { get; set; }
+
             public DateTime LastRaised { get; set; }
 
             public DateTime LastLowered { get; set; }
@@ -81,43 +81,46 @@ namespace BBAlarmsService
             public DateTime LastDisabled { get; set; }
 
 
-            public bool HasChangedState => _prevState != _state;
-
             public Alarm(String alarmID)
             {
                 ID = alarmID;
             }
 
-            public void Update(AlarmState state, String message = null)
+            public bool Update(AlarmState state, String message = null, int code = AlarmsMessageSchema.NO_CODE)
             {
+                bool changed = state != State;
                 State = state;
                 Message = message;
+                if (!changed) changed = code != Code;
+                Code = code;
+                return changed;
             }
 
-            public void StartTest(AlarmState state, String msg = "Start testing")
+            public bool StartTest(AlarmState state, String msg = "Start testing", int code = AlarmsMessageSchema.NO_CODE)
             {
                 Testing = true;
-                Raise(state, msg);
+                return Raise(state, msg, code);
             }
 
-            public void EndTest(String msg = "End testing")
+            public bool EndTest(String msg = "End testing", int code = AlarmsMessageSchema.NO_CODE)
             {
-                Lower(msg);
+                bool changed = Lower(msg, code);
                 Testing = false;
+                return changed;
             }
 
-            public void Raise(AlarmState state, String message)
+            public bool Raise(AlarmState state, String message, int code = AlarmsMessageSchema.NO_CODE)
             {
                 if (state == AlarmState.OFF || state == AlarmState.DISABLED)
                 {
                     throw new ArgumentException(String.Format("Alarm state {0} is not valid for raising an alarm", state));
                 }
-                Update(state, message);
+                return Update(state, message, code);
             }
 
-            public void Lower(String message)
+            public bool Lower(String message, int code = AlarmsMessageSchema.NO_CODE)
             {
-                Update(AlarmState.OFF, message);
+                return Update(AlarmState.OFF, message, code);
             }
 
             public void Enable(bool enable = true)
@@ -141,7 +144,7 @@ namespace BBAlarmsService
             }
         }
 
-        public event EventHandler<Alarm> AlarmStateChanged;
+        public event EventHandler<Alarm> AlarmChanged;
 
         public List<IAlarmRaiser> AlarmRaisers { get; internal set; } = new List<IAlarmRaiser>();
         private Dictionary<String, Alarm> _alarms = new Dictionary<String, Alarm>();
@@ -176,6 +179,19 @@ namespace BBAlarmsService
             }
         }
 
+        public Dictionary<String, int> AlarmCodes
+        {
+            get
+            {
+                Dictionary<String, int> alarmCodes = new Dictionary<string, int>();
+
+                foreach (var a in Alarms)
+                {
+                    alarmCodes[a.ID] = a.Code;
+                }
+                return alarmCodes;
+            }
+        }
 
         public bool IsAlarmRaised
         {
@@ -188,6 +204,7 @@ namespace BBAlarmsService
                 return false;
             }
         }
+
 
         public AlarmManager()
         {
@@ -291,20 +308,20 @@ namespace BBAlarmsService
             return alarm.IsDisabled;
         }
 
-        public Alarm UpdateAlarm(String alarmID, AlarmState alarmState, String alarmMessage)
+        public Alarm UpdateAlarm(String alarmID, AlarmState alarmState, String alarmMessage, int code = AlarmsMessageSchema.NO_CODE)
         {
             Alarm alarm = GetAlarm(alarmID, true);
-            alarm.Update(alarmState, alarmMessage);
+            bool changed = alarm.Update(alarmState, alarmMessage, code);
 
-            if(AlarmStateChanged != null && alarm.HasChangedState)
+            if(AlarmChanged != null && changed)
             {
-                AlarmStateChanged.Invoke(this, alarm);
+                AlarmChanged.Invoke(this, alarm);
             }
 
             return alarm;
         }
         
-        public Alarm Raise(String alarmID, AlarmState alarmState, String alarmMessage)
+        public Alarm Raise(String alarmID, AlarmState alarmState, String alarmMessage, int code = AlarmsMessageSchema.NO_CODE)
         {
             //Check this is a 'raising' alarm state
             if(alarmState == AlarmState.OFF || alarmState == AlarmState.DISABLED)
@@ -315,9 +332,9 @@ namespace BBAlarmsService
             return UpdateAlarm(alarmID, alarmState, alarmMessage);
         }
 
-        public Alarm Lower(String alarmID, String alarmMessage)
+        public Alarm Lower(String alarmID, String alarmMessage, int code = AlarmsMessageSchema.NO_CODE)
         {
-            return UpdateAlarm(alarmID, AlarmState.OFF, alarmMessage);
+            return UpdateAlarm(alarmID, AlarmState.OFF, alarmMessage, code);
         }
 
         public Alarm Enable(String alarmID)
@@ -330,18 +347,18 @@ namespace BBAlarmsService
             return UpdateAlarm(alarmID, AlarmState.DISABLED, null);
         }
 
-        public Alarm StartTest(String alarmID, AlarmState alarmState, String alarmMessage)
+        public Alarm StartTest(String alarmID, AlarmState alarmState, String alarmMessage, int code = AlarmsMessageSchema.NO_CODE)
         {
             var alarm = GetAlarm(alarmID, true);
             if (alarm.IsRaised)
             {
                 throw new Exception(String.Format("Alarm {0} already raised", alarmID));
             }
-            alarm.StartTest(alarmState, alarmMessage);
+            bool changed = alarm.StartTest(alarmState, alarmMessage, code);
 
-            if (AlarmStateChanged != null && alarm.HasChangedState)
+            if (AlarmChanged != null && changed)
             {
-                AlarmStateChanged.Invoke(this, alarm);
+                AlarmChanged.Invoke(this, alarm);
             }
             return alarm;
         }
@@ -349,11 +366,11 @@ namespace BBAlarmsService
         public Alarm EndTest(String alarmID)
         {
             var alarm = GetAlarm(alarmID, true);
-            alarm.EndTest();
+            bool changed = alarm.EndTest();
 
-            if (AlarmStateChanged != null && alarm.HasChangedState)
+            if (AlarmChanged != null && changed)
             {
-                AlarmStateChanged.Invoke(this, alarm);
+                AlarmChanged.Invoke(this, alarm);
             }
             return alarm;
         }
@@ -370,7 +387,7 @@ namespace BBAlarmsService
             }
             else
             {
-                var message = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message);
+                var message = AlarmsMessageSchema.AlertAlarmStateChange(alarm.ID, alarm.State, alarm.Message, alarm.Code);
                 message.Target = target;
                 cmc.SendMessage(message);
             }

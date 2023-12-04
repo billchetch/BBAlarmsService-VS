@@ -115,14 +115,15 @@ namespace BBAlarmsService
             return row == null ? DateTime.MinValue : row.GetDateTime("created");
         }
 
-        public long LogStateChange(String alarmID, AlarmState newState, String alarmMessage = null, String comments = null)
+        public long LogChange(String alarmID, AlarmState alarmState, String alarmMessage = null, int alarmCode = 0, String comments = null)
         {
             var row = SelectAlarm(alarmID);
             if (row == null) throw new Exception("No alarm found with ID " + alarmID);
 
             var newRow = new DBRow();
-            newRow["alarm_state"] = newState.ToString();
+            newRow["alarm_state"] = alarmState.ToString();
             newRow["alarm_id"] = row.ID;
+            newRow["alarm_code"] = alarmCode;
             if (alarmMessage != null) newRow["alarm_message"] = alarmMessage;
             if (comments != null) newRow["comments"] = comments;
 
