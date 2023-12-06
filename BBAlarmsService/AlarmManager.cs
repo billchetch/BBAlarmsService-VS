@@ -23,7 +23,7 @@ namespace BBAlarmsService
             public String Name { get; set; }
 
 
-            private AlarmState _state = AlarmState.OFF;
+            private AlarmState _state = AlarmState.DISCONNECTED;
             public AlarmState State
             {
                 get
@@ -33,7 +33,7 @@ namespace BBAlarmsService
                 set
                 {
                     //do some state checking here
-                    if(IsDisabled && value != AlarmState.OFF)
+                    if(IsDisabled && value != AlarmState.DISCONNECTED)
                     {
                         throw new Exception(String.Format("Alarm {0} is disabled cannot set state directly to {1}", ID, value));
                     }
@@ -62,11 +62,11 @@ namespace BBAlarmsService
 
             public bool IsTesting => Testing;
 
-            public bool IsLowered => State == AlarmState.OFF;
+            public bool IsLowered => State == AlarmState.LOWERED;
 
             public bool IsDisabled => State == AlarmState.DISABLED;
 
-            public bool IsRaised => !IsLowered && !IsDisabled;
+            public bool IsRaised => !IsLowered && !IsDisabled && State != AlarmState.DISCONNECTED;
 
             public bool CanDisable { get; set; } = true;
 
@@ -111,7 +111,7 @@ namespace BBAlarmsService
 
             public bool Raise(AlarmState state, String message, int code = AlarmsMessageSchema.NO_CODE)
             {
-                if (state == AlarmState.OFF || state == AlarmState.DISABLED)
+                if (state == AlarmState.DISCONNECTED || state == AlarmState.DISABLED)
                 {
                     throw new ArgumentException(String.Format("Alarm state {0} is not valid for raising an alarm", state));
                 }
@@ -120,7 +120,12 @@ namespace BBAlarmsService
 
             public bool Lower(String message, int code = AlarmsMessageSchema.NO_CODE)
             {
-                return Update(AlarmState.OFF, message, code);
+                return Update(AlarmState.LOWERED, message, code);
+            }
+
+            public bool Disccounect(String message, int code = AlarmsMessageSchema.CODE_SOURCE_OFFLINE)
+            {
+                return Update(AlarmState.DISCONNECTED, message, code);
             }
 
             public void Enable(bool enable = true)
@@ -129,7 +134,7 @@ namespace BBAlarmsService
                 {
                     if (State == AlarmState.DISABLED)
                     {
-                        Update(AlarmState.OFF);
+                        Update(AlarmState.DISCONNECTED);
                     }
                 }
                 else if(State != AlarmState.DISABLED)
@@ -324,7 +329,7 @@ namespace BBAlarmsService
         public Alarm Raise(String alarmID, AlarmState alarmState, String alarmMessage, int code = AlarmsMessageSchema.NO_CODE)
         {
             //Check this is a 'raising' alarm state
-            if(alarmState == AlarmState.OFF || alarmState == AlarmState.DISABLED)
+            if(alarmState == AlarmState.DISCONNECTED || alarmState == AlarmState.LOWERED || alarmState == AlarmState.DISABLED)
             {
                 throw new ArgumentException(String.Format("Alarm state {0} is not valid for raising an alarm", alarmState));
             }
@@ -334,12 +339,13 @@ namespace BBAlarmsService
 
         public Alarm Lower(String alarmID, String alarmMessage, int code = AlarmsMessageSchema.NO_CODE)
         {
-            return UpdateAlarm(alarmID, AlarmState.OFF, alarmMessage, code);
+            return UpdateAlarm(alarmID, AlarmState.LOWERED, alarmMessage, code);
         }
 
+        
         public Alarm Enable(String alarmID)
         {
-            return UpdateAlarm(alarmID, AlarmState.OFF, null);
+            return UpdateAlarm(alarmID, AlarmState.DISCONNECTED, null);
         }
 
         public Alarm Disable(String alarmID)
@@ -375,7 +381,33 @@ namespace BBAlarmsService
             return alarm;
         }
 
-        
+
+        public void Connect(IAlarmRaiser raiser = null)
+        {
+            foreach(var alarm in _alarms.Values)
+            {
+                if((raiser == null || alarm.Raiser == raiser) && !alarm.IsDisabled)
+                {
+                    Lower(alarm.ID, String.Format("Connecting {0}", alarm.ID), AlarmsMessageSchema.CODE_SOURCE_ONLINE);
+                }
+            }
+        }
+
+
+
+        public void Disconnect(IAlarmRaiser raiser = null) //String alarmID, String alarmMessage, int code = AlarmsMessageSchema.CODE_SOURCE_OFFLINE)
+        {
+
+            foreach (var alarm in _alarms.Values)
+            {
+                if ((raiser == null || alarm.Raiser == raiser) && !alarm.IsDisabled)
+                {
+                    UpdateAlarm(alarm.ID, AlarmState.DISCONNECTED, String.Format("Disconnecting {0}", alarm.ID), AlarmsMessageSchema.CODE_SOURCE_OFFLINE);
+                }
+            }
+        }
+
+
         public void NotifyAlarmsService(ChetchMessagingClient cmc, Alarm alarm = null, String target = AlarmsMessageSchema.ALARMS_SERVICE_NAME)
         {
             if (alarm == null)

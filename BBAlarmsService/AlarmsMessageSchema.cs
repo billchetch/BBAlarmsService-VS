@@ -13,7 +13,8 @@ namespace BBAlarmsService
     public enum AlarmState
     {
         DISABLED,
-        OFF,
+        DISCONNECTED,
+        LOWERED,
         MINOR,
         MODERATE,
         SEVERE,
@@ -49,7 +50,7 @@ namespace BBAlarmsService
 
         public const int NO_CODE = 0;
         public const int CODE_SOURCE_OFFLINE = 1;
-
+        public const int CODE_SOURCE_ONLINE = 2;
 
         static private Dictionary<String, Message> _raisedAlarms = new Dictionary<String, Message>();
 

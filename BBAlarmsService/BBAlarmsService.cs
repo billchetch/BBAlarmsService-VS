@@ -278,6 +278,20 @@ namespace BBAlarmsService
             _updateAlarmStatesTimer.Start();
         }
 
+        protected override void OnADMsReady()
+        {
+            base.OnADMsReady();
+
+            foreach (var raiser in _alarmManager.AlarmRaisers)
+            {
+                if (raiser is LocalAlarm)
+                {
+                    _alarmManager.Connect(raiser);
+                }
+            }
+
+        }
+
         public override void AddCommandHelp()
         {
             base.AddCommandHelp();
@@ -364,11 +378,7 @@ namespace BBAlarmsService
             {
                 if (sub is RemoteAlarm && sub.Sender == source)
                 {
-                    var ra = (RemoteAlarm)sub;
-                    if (!_alarmManager.IsAlarmDisabled(ra.AlarmID))
-                    {
-                        _alarmManager.Lower(ra.AlarmID, String.Format("Lowering alarm as client {0} is offline", source), AlarmsMessageSchema.CODE_SOURCE_OFFLINE);
-                    }
+                    _alarmManager.Disconnect((RemoteAlarm)sub);
                 }
             }
         }
@@ -494,13 +504,13 @@ namespace BBAlarmsService
 
                 case AlarmsMessageSchema.COMMAND_TEST_BUZZER:
                     secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 5;
-                    StartTest(AlarmTest.BUZZER, null, AlarmState.OFF, secs);
+                    StartTest(AlarmTest.BUZZER, null, AlarmState.LOWERED, secs);
                     response.Value = String.Format("Testing buzzer for {0} secs", secs);
                     return true;
 
                 case AlarmsMessageSchema.COMMAND_TEST_PILOT_LIGHT:
                     secs = args.Count > 0 ? System.Convert.ToInt16(args[0]) : 5;
-                    StartTest(AlarmTest.PILOT_LIGHT, null, AlarmState.OFF, secs);
+                    StartTest(AlarmTest.PILOT_LIGHT, null, AlarmState.LOWERED, secs);
                     response.Value = String.Format("Testing pilot for {0} secs", secs);
                     return true;
 
@@ -557,7 +567,7 @@ namespace BBAlarmsService
         }
 
         //testing
-        private void StartTest(AlarmTest test, String alarmID, AlarmState alarmState = AlarmState.OFF, int testSecs = 5)
+        private void StartTest(AlarmTest test, String alarmID, AlarmState alarmState = AlarmState.LOWERED, int testSecs = 5)
         {
             if (IsTesting) throw new Exception(String.Format("Cannot run test already testing {0}", _currentTest));
             if (_alarmManager.IsAlarmRaised) throw new Exception("Cannot test any alarm if at least one alarm is already on");
@@ -570,11 +580,11 @@ namespace BBAlarmsService
                     case AlarmTest.ALARM:
                         _testingAlarmID = alarmID;
 
-                        if (alarmState == AlarmState.OFF)
+                        if (alarmState == AlarmState.LOWERED)
                         {
                             var rand = new Random();
                             Array values = Enum.GetValues(typeof(AlarmState));
-                            alarmState = (AlarmState)values.GetValue(1 + rand.Next(values.Length - 2));
+                            alarmState = (AlarmState)values.GetValue(2 + rand.Next(values.Length - 3));
                         }
 
                         String msg = String.Format("Start alarm test on {0} for {1} secs", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), testSecs);
