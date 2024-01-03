@@ -18,6 +18,11 @@ namespace BBAlarmsService
 
         public class Alarm
         {
+            static private bool isRaisingState(AlarmState state)
+            {
+                return state > AlarmState.LOWERED;
+            }
+
             public String ID { get; internal set; }
 
             public String Name { get; set; }
@@ -40,6 +45,10 @@ namespace BBAlarmsService
                     if(value == AlarmState.DISABLED && !CanDisable)
                     {
                         throw new Exception(String.Format("Alarm {0} cannot be disabled", ID));
+                    }
+                    if(isRaisingState(value) && !IsLowered)
+                    {
+                        throw new Exception(String.Format("Alarm {0} cannot be raised as it is in state {1}", ID, State));
                     }
 
                     _state = value;
@@ -66,7 +75,7 @@ namespace BBAlarmsService
 
             public bool IsDisabled => State == AlarmState.DISABLED;
 
-            public bool IsRaised => !IsLowered && !IsDisabled && State != AlarmState.DISCONNECTED;
+            public bool IsRaised => isRaisingState(State);
 
             public bool CanDisable { get; set; } = true;
 
